@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - CS416 Course Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dashboard-body">
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel-dark">
+            <div class="sidebar-header">
+                <div class="logo">CS416 Dashboard</div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active">Overview</a>
+                <a href="#" class="nav-item">Courses</a>
+                <a href="#" class="nav-item">Assignments</a>
+                <a href="#" class="nav-item">Grades</a>
+                <a href="#" class="nav-item">Settings</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-secondary logout-btn">Log Out</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Topbar -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <h1 class="page-title">Dashboard Overview</h1>
+                </div>
+                <div class="topbar-right">
+                    <div class="user-profile">
+                        <div class="avatar">U</div>
+                        <span class="username">Student</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div class="content-area" id="dashboardContent">
+                <div class="courses-header">
+                    <h2>Your Courses</h2>
+                    <button id="addCourseBtn" class="btn btn-primary">+ Add Course</button>
+                </div>
+                <div class="course-grid" id="courseGrid">
+                    <!-- Default course -->
+                    <div class="course-card glass-panel" onclick="window.location.href='course.html?name=Intro%20to%20Computer%20Science'">
+                        <div class="course-card-header">
+                            <h4>Intro to Computer Science</h4>
+                            <span class="badge">CS101</span>
+                        </div>
+                        <p>12 Students</p>
+                        <div class="course-card-footer">
+                            <span>3 Assignments</span>
+                            <span class="status active">🟢 Active</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Course Modal -->
+    <div id="addCourseModal" class="modal-overlay hidden">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h3>Create New Course</h3>
+                <button class="close-modal" id="closeCourseIcon">&times;</button>
+            </div>
+            <form id="addCourseForm">
+                <div class="input-group">
+                    <label for="courseName">Course Name</label>
+                    <input type="text" id="courseName" required placeholder="e.g. CS 416 Software Engineering">
+                </div>
+                <div class="input-group">
+                    <label for="courseCode">Course Code / Identifier</label>
+                    <input type="text" id="courseCode" placeholder="e.g. CS416" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary close-modal" id="closeCourseBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Course</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
