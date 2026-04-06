@@ -20,15 +20,15 @@ Each unique assignment will be displayed on the course's page, and each submissi
 
 ## Technologies Used
 
-**Frontend:**
+**Frontend:** Next.js
 
-**Backend:** Node.js
+**Backend:** Python flask
 
 **Database:** MySQL
 
 **Docker Container OS:** Ubuntu 24.04 (stable)
 
-**Version Control:** GitHub
+**Version Control:** GitHub ([our branching strategy](git-branch-strategy.md))
 
 ***
 
