@@ -1,17 +1,26 @@
 import mysql.connector
 from flask import Flask, request, jsonify
+from dotenv import dotenv_values
+import os
+import sys
 
 app = Flask(__name__)
 
 # --- DATABASE CONNECTION HELPER (Local Version) ---
 def get_db_connection():
-    # Update these with your local MySQL credentials!
-    return mysql.connector.connect(
-        host="localhost", # Points to your local machine
-        user="root",      # Default local MySQL user
-        password="SchoolBurd6.", # Your local password
-        database="project2"
-    )
+    global db_config
+    if db_config is None:
+        try: 
+            env = dotenv_values(os.path.abspath("db-config.env"))
+        except:
+            print("ERROR: Couldn't read values from the db-config.env file (please create one using the example)", file=sys.err)
+        db_config = {
+            "host": env["DB_HOST"], 
+            "user": env["DB_USER"], 
+            "password": env["DB_PASS"], 
+            "database": env["DB_NAME"]
+        }
+    return mysql.connector.connect(**db_config)
 
 # --- CUSTOM SORTING ALGORITHM (Assignment #3) ---
 def bubble_sort_students_by_score(data):
@@ -108,4 +117,6 @@ def get_average():
     return jsonify({"average_score": round(float(avg), 2)}), 200
 
 if __name__ == '__main__':
+    global db_config
+    db_config = None
     app.run(host='0.0.0.0', port=5000, debug=True)
