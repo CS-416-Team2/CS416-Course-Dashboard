@@ -1,3 +1,5 @@
+USE project2;
+
 -- 1. Users (Instructors)
 CREATE TABLE users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -62,3 +64,17 @@ CREATE TABLE assignment_grade (
     -- Logic constraint for the score range
     CONSTRAINT chk_score_range CHECK (score >= 0 AND score <= 100)
 );
+
+USE project2; 
+-- 1. Force the Instructor to be user_id = 1
+INSERT INTO users (user_id, email, password_hash, first_name, last_name) 
+VALUES (1, 'david.dai@pnw.edu', 'hashed_pass_123', 'David', 'Dai');
+
+-- 2. Force the Course to be course_id = 1 (and link it to user 1)
+INSERT INTO courses (course_id, instructor_id, course_name) 
+VALUES (1, 1, 'Software Engineering Course Management');
+
+-- 3. Force the Assignment to be assignment_id = 1 (and link it to course 1)
+INSERT INTO assignments (assignment_id, course_id, title, max_points) 
+VALUES (1, 1, 'Initial Web Project', 100);
+
