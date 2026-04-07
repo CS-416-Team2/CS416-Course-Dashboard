@@ -8,15 +8,18 @@ CREATE TABLE users (
 );
 
 -- 2. Students
+-- UPDATED: Removed AUTO_INCREMENT to allow manual ID insertion.
+-- ADDED: Constraint to strictly enforce IDs between 1 and 10.
 CREATE TABLE students (
-    student_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT PRIMARY KEY,
     first_name VARCHAR(50) NOT NULL,
     middle_name VARCHAR(50),
-    last_name VARCHAR(50) NOT NULL
+    last_name VARCHAR(50) NOT NULL,
+    CONSTRAINT chk_student_id CHECK (student_id >= 1 AND student_id <= 10)
 );
 
 -- 3. Courses
--- linked to users (instructor_id)
+-- Linked to users (instructor_id)
 CREATE TABLE courses (
     course_id INT AUTO_INCREMENT PRIMARY KEY,
     instructor_id INT NOT NULL,
@@ -25,7 +28,7 @@ CREATE TABLE courses (
 );
 
 -- 4. Assignments
--- linked to courses
+-- Linked to courses
 CREATE TABLE assignments (
     assignment_id INT AUTO_INCREMENT PRIMARY KEY,
     course_id INT NOT NULL,
