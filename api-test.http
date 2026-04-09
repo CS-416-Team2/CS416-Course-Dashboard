@@ -1,5 +1,45 @@
-### 1. Add a Student (POST)
-# Run this a few times, changing the student_id (1-10) and score (0-100) to populate the mock DB.
+### 1. Get All Courses (GET)
+GET http://localhost:5000/api/courses
+
+### 2. Create a New Course (POST)
+POST http://localhost:5000/api/courses
+Content-Type: application/json
+
+{
+  "course_name": "CS416 Software Engineering"
+}
+
+### 3. Get Assignments for Course 1 (GET)
+GET http://localhost:5000/api/courses/1/assignments
+
+### 4. Create Assignment with Grades (POST)
+POST http://localhost:5000/api/courses/1/assignments
+Content-Type: application/json
+
+{
+  "title": "Midterm Exam",
+  "grades": [
+    { "first_name": "Alice", "middle_name": "", "last_name": "Johnson", "student_id": 1, "score": 92.0 },
+    { "first_name": "Bob", "middle_name": "G", "last_name": "Smith", "student_id": 2, "score": 85.5 },
+    { "first_name": "Charlie", "middle_name": "", "last_name": "Brown", "student_id": 3, "score": 78.0 },
+    { "first_name": "Diana", "middle_name": "M", "last_name": "Lee", "student_id": 4, "score": 95.0 },
+    { "first_name": "Eve", "middle_name": "", "last_name": "Davis", "student_id": 5, "score": 60.5 }
+  ]
+}
+
+### 5. Get Sorted Students — All (GET)
+GET http://localhost:5000/api/students
+
+### 6. Get Sorted Students — Filtered by Assignment (GET)
+GET http://localhost:5000/api/students?assignment_id=1
+
+### 7. Get Average — All (GET)
+GET http://localhost:5000/api/average
+
+### 8. Get Average — Filtered by Assignment (GET)
+GET http://localhost:5000/api/average?assignment_id=1
+
+### 9. Add a Single Student (POST)
 POST http://localhost:5000/api/students
 Content-Type: application/json
 
@@ -7,26 +47,6 @@ Content-Type: application/json
   "first_name": "Isaac",
   "middle_name": "G",
   "last_name": "Smith",
-  "student_id": 1,
+  "student_id": 6,
   "score": 85.5
 }
-
-### 2. Add Another Student (POST)
-POST http://localhost:5000/api/students
-Content-Type: application/json
-
-{
-  "first_name": "Alice",
-  "middle_name": "",
-  "last_name": "Johnson",
-  "student_id": 2,
-  "score": 92.0
-}
-
-### 3. Get Sorted Students (GET)
-# This will return the list sorted from lowest to highest score.
-GET http://localhost:5000/api/students
-
-### 4. Get the Class Average (GET)
-# This calculates the mathematical average of the inputs.
-GET http://localhost:5000/api/average
