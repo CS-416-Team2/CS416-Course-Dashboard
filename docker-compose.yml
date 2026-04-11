@@ -1,31 +1,51 @@
-# To start everything: run docker-compose up -d
-# To stop everything for the night: run docker-compose stop
-# To restart the next day: run docker-compose start
-
 services:
-  # 1. The Database Service
   db:
-    image: mysql:8.0
+    image: mysql:8.4
+    container_name: mysql_db
+    restart: always 
     environment:
-      MYSQL_ROOT_PASSWORD: root_password # Change this
-      MYSQL_DATABASE: dashboard_db # It will auto-create this DB for you!
-    ports:
-      - "3307:3306"
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER} # Currently Root, so Password is same as Root_Password
+      MYSQL_PASSWORD: ${DB_PASS}
     volumes:
-      - db_data:/var/lib/mysql # This saves your data so it isn't deleted
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # replace ./init.sql with the path for the .SQL file
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASS}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # 2. Your Flask Backend Service
-  backend:
-    build: . # Builds the Dockerfile we just made
+  flask-api:
+    build: ./backend
+    container_name: flask_api
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://${DB_USER}:${DB_PASS}@db:${DB_PORT}/${DB_NAME}
+      FLASK_ENV: production
+      PYTHONUNBUFFERED: 1 # Allows you to see logs in real-time via 'docker logs'
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
-      - "5000:5000" # Assumes Flask runs on port 5000
+      - "5000:5000"
+
+  nextjs-frontend:
+    build: ./frontend
+    container_name: nextjs_ui
+    restart: always
+    env_file:
+      - ./frontend/.env
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_API_BASE_URL: ${BACKEND_API_BASE_URL}
     depends_on:
       - db
-    volumes:
-      - ./Backend:/app/Backend # Live-reloads your Python code so you don't have to rebuild constantly!
-    environment:
-      # Tell Flask how to connect to the 'db' service:
-      DATABASE_URL: mysql+pymysql://root:root_password@db:3306/dashboard_db
+      - flask-api
 
 volumes:
-  db_data:
+  mysql_data: # This creates a managed volume that survives 'docker-compose down'
