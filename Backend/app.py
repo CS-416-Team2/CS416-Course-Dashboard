@@ -1,6 +1,10 @@
 import mysql.connector
 from mysql.connector import pooling
+<<<<<<< Updated upstream
 from flask import Flask, request, jsonify
+=======
+from flask import Flask, request, jsonify, g
+>>>>>>> Stashed changes
 from flask_cors import CORS
 from dotenv import dotenv_values
 from decimal import Decimal
@@ -11,8 +15,11 @@ app = Flask(__name__)
 CORS(app)
 
 # --- DATABASE CONNECTION POOL ---
+<<<<<<< Updated upstream
 # A pool keeps connections open and reuses them instead of
 # opening a new one on every request (which is slow and can crash the server).
+=======
+>>>>>>> Stashed changes
 db_pool = None
 
 def init_pool():
@@ -37,8 +44,61 @@ def init_pool():
     )
     print(f" * Connected to MySQL ({env['DB_HOST']}/{env['DB_NAME']})")
 
+<<<<<<< Updated upstream
 def get_db_connection():
     return db_pool.get_connection()
+=======
+
+def get_db():
+    """Get the per-request database connection. Creates one from the pool
+    on first call and reuses it for the rest of the request."""
+    if 'db' not in g:
+        g.db = db_pool.get_connection()
+    return g.db
+
+
+@app.teardown_appcontext
+def close_db(exception):
+    """Automatically return the connection to the pool when the request ends."""
+    conn = g.pop('db', None)
+    if conn is not None:
+        conn.close()
+
+
+def seed_default_user():
+    conn = db_pool.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO users (user_id, email, password_hash, first_name, last_name, is_active, session_version)
+            VALUES (
+                1,
+                'admin@school.edu',
+                '$2b$12$BfX4m84twCO.ZCLyVN.HTOOw7bxdnwbyF3IQOHXjIt.M7L9j66oYy',
+                'Default',
+                'Instructor',
+                1,
+                1
+            )
+            ON DUPLICATE KEY UPDATE
+                email = VALUES(email),
+                first_name = VALUES(first_name),
+                last_name = VALUES(last_name),
+                is_active = VALUES(is_active),
+                session_version = VALUES(session_version),
+                -- Upgrade legacy plaintext password records to bcrypt hash.
+                password_hash = CASE
+                    WHEN password_hash = 'placeholder' THEN VALUES(password_hash)
+                    ELSE password_hash
+                END
+        """)
+        conn.commit()
+    except mysql.connector.Error:
+        pass
+    finally:
+        cursor.close()
+        conn.close()
+>>>>>>> Stashed changes
 
 
 # --- HELPER: Convert Decimal to float for JSON ---
@@ -68,7 +128,11 @@ def bubble_sort_students_by_score(data):
 
 @app.route('/api/courses', methods=['GET'])
 def get_courses():
+<<<<<<< Updated upstream
     conn = get_db_connection()
+=======
+    conn = get_db()
+>>>>>>> Stashed changes
     cursor = conn.cursor(dictionary=True)
 
     try:
@@ -89,7 +153,10 @@ def get_courses():
         return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
+<<<<<<< Updated upstream
         conn.close()
+=======
+>>>>>>> Stashed changes
 
 
 @app.route('/api/courses', methods=['POST'])
@@ -100,11 +167,18 @@ def create_course():
     if not course_name:
         return jsonify({"error": "course_name is required"}), 400
 
+<<<<<<< Updated upstream
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
         # instructor_id = 1 is the seeded user from schema.sql
+=======
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+>>>>>>> Stashed changes
         cursor.execute(
             "INSERT INTO courses (instructor_id, course_name) VALUES (%s, %s)",
             (1, course_name)
@@ -116,14 +190,21 @@ def create_course():
         return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
+<<<<<<< Updated upstream
         conn.close()
+=======
+>>>>>>> Stashed changes
 
 
 # ==================== ASSIGNMENTS ====================
 
 @app.route('/api/courses/<int:course_id>/assignments', methods=['GET'])
 def get_assignments(course_id):
+<<<<<<< Updated upstream
     conn = get_db_connection()
+=======
+    conn = get_db()
+>>>>>>> Stashed changes
     cursor = conn.cursor(dictionary=True)
 
     try:
@@ -143,7 +224,43 @@ def get_assignments(course_id):
         return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
+<<<<<<< Updated upstream
         conn.close()
+=======
+
+
+@app.route('/api/assignments', methods=['POST'])
+def create_assignment_simple():
+    """Create an assignment from the dashboard form (course_id in JSON body)."""
+    data = request.get_json()
+    course_id = data.get("course_id")
+    title = data.get("title", "").strip()
+    max_points = data.get("max_points", 100)
+
+    if not course_id:
+        return jsonify({"error": "course_id is required"}), 400
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "INSERT INTO assignments (course_id, title, max_points) VALUES (%s, %s, %s)",
+            (course_id, title, max_points)
+        )
+        conn.commit()
+        return jsonify({
+            "message": "Assignment created",
+            "assignment_id": cursor.lastrowid
+        }), 201
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+>>>>>>> Stashed changes
 
 
 @app.route('/api/courses/<int:course_id>/assignments', methods=['POST'])
@@ -166,18 +283,28 @@ def create_assignment(course_id):
     if not title:
         return jsonify({"error": "title is required"}), 400
 
+<<<<<<< Updated upstream
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
         # 1. Create the assignment
+=======
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+>>>>>>> Stashed changes
         cursor.execute(
             "INSERT INTO assignments (course_id, title, max_points) VALUES (%s, %s, %s)",
             (course_id, title, 100)
         )
         assignment_id = cursor.lastrowid
 
+<<<<<<< Updated upstream
         # 2. For each grade row, insert/update student and record the grade
+=======
+>>>>>>> Stashed changes
         for g in grades:
             sid   = g.get("student_id")
             fname = g.get("first_name", "")
@@ -186,9 +313,14 @@ def create_assignment(course_id):
             score = g.get("score", 0)
 
             if not (0 <= float(score) <= 100):
+<<<<<<< Updated upstream
                 continue  # Skip invalid scores
 
             # Insert student (or update name if they already exist)
+=======
+                continue
+
+>>>>>>> Stashed changes
             cursor.execute("""
                 INSERT INTO students (student_id, first_name, middle_name, last_name)
                 VALUES (%s, %s, %s, %s)
@@ -198,13 +330,19 @@ def create_assignment(course_id):
                     last_name = VALUES(last_name)
             """, (sid, fname, mname, lname))
 
+<<<<<<< Updated upstream
             # Enroll student in course (ignore if already enrolled)
+=======
+>>>>>>> Stashed changes
             cursor.execute(
                 "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
                 (sid, course_id)
             )
 
+<<<<<<< Updated upstream
             # Insert the grade
+=======
+>>>>>>> Stashed changes
             cursor.execute(
                 "INSERT INTO assignment_grade (student_id, assignment_id, score) VALUES (%s, %s, %s)",
                 (sid, assignment_id, score)
@@ -222,7 +360,10 @@ def create_assignment(course_id):
         return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
+<<<<<<< Updated upstream
         conn.close()
+=======
+>>>>>>> Stashed changes
 
 
 # ==================== STUDENTS ====================
@@ -230,6 +371,7 @@ def create_assignment(course_id):
 @app.route('/api/students', methods=['POST'])
 def add_student_data():
     data = request.get_json()
+<<<<<<< Updated upstream
     student_id = data.get("student_id")
     score = data.get("score")
 
@@ -257,17 +399,177 @@ def add_student_data():
 
         conn.commit() # Save changes to DB
         return jsonify({"message": "Student and score saved to MySQL!"}), 201
+=======
+    first_name = data.get("first_name", "").strip()
+    middle_name = data.get("middle_name", "") or ""
+    last_name = data.get("last_name", "").strip()
+
+    if not first_name or not last_name:
+        return jsonify({"error": "first_name and last_name are required"}), 400
+
+    student_id = data.get("student_id")
+    score = data.get("score")
+    course_ids = data.get("course_ids", [])
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        if student_id:
+            cursor.execute("""
+                INSERT INTO students (student_id, first_name, middle_name, last_name)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    first_name = VALUES(first_name),
+                    middle_name = VALUES(middle_name),
+                    last_name = VALUES(last_name)
+            """, (student_id, first_name, middle_name, last_name))
+        else:
+            cursor.execute(
+                "INSERT INTO students (first_name, middle_name, last_name) VALUES (%s, %s, %s)",
+                (first_name, middle_name, last_name)
+            )
+            student_id = cursor.lastrowid
+
+        for cid in course_ids:
+            cursor.execute(
+                "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
+                (student_id, cid)
+            )
+
+        if score is not None:
+            if not (0 <= score <= 100):
+                return jsonify({"error": "Score must be between 0 and 100"}), 400
+            assignment_id = data.get("assignment_id", 1)
+            cursor.execute(
+                "INSERT INTO assignment_grade (student_id, assignment_id, score) VALUES (%s, %s, %s)",
+                (student_id, assignment_id, score)
+            )
+
+        conn.commit()
+        return jsonify({"message": "Student saved!", "student_id": student_id}), 201
 
     except mysql.connector.Error as err:
         return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
+
+
+@app.route('/api/students/<int:student_id>', methods=['PUT'])
+def update_student(student_id):
+    """Update student info and/or their course enrollments."""
+    data = request.get_json()
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        first_name = data.get("first_name")
+        last_name = data.get("last_name")
+        if first_name and last_name:
+            middle_name = data.get("middle_name", "") or ""
+            cursor.execute("""
+                UPDATE students SET first_name = %s, middle_name = %s, last_name = %s
+                WHERE student_id = %s
+            """, (first_name.strip(), middle_name, last_name.strip(), student_id))
+
+        if "course_ids" in data:
+            course_ids = data["course_ids"]
+            cursor.execute("DELETE FROM enrollments WHERE student_id = %s", (student_id,))
+            for cid in course_ids:
+                cursor.execute(
+                    "INSERT INTO enrollments (student_id, course_id) VALUES (%s, %s)",
+                    (student_id, cid)
+                )
+
+        conn.commit()
+        return jsonify({"message": "Student updated"}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/students/<int:student_id>/enrollments', methods=['GET'])
+def get_student_enrollments(student_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT c.course_id, c.course_name
+            FROM enrollments e
+            JOIN courses c ON e.course_id = c.course_id
+            WHERE e.student_id = %s
+        """, (student_id,))
+        return jsonify(cursor.fetchall()), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/courses/<int:course_id>/unenrolled', methods=['GET'])
+def get_unenrolled_students(course_id):
+    """Get students NOT enrolled in a given course."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT s.student_id, s.first_name, s.middle_name, s.last_name
+            FROM students s
+            WHERE s.student_id NOT IN (
+                SELECT e.student_id FROM enrollments e WHERE e.course_id = %s
+            )
+            ORDER BY s.last_name, s.first_name
+        """, (course_id,))
+        return jsonify(cursor.fetchall()), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/courses/<int:course_id>/enroll', methods=['POST'])
+def enroll_students_in_course(course_id):
+    """Enroll one or more students into a course."""
+    data = request.get_json()
+    student_ids = data.get("student_ids", [])
+
+    if not student_ids:
+        return jsonify({"error": "student_ids is required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        for sid in student_ids:
+            cursor.execute(
+                "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
+                (sid, course_id)
+            )
+        conn.commit()
+        return jsonify({"message": f"{len(student_ids)} student(s) enrolled"}), 201
+>>>>>>> Stashed changes
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+<<<<<<< Updated upstream
         conn.close()
+=======
+>>>>>>> Stashed changes
 
 
 @app.route('/api/students', methods=['GET'])
 def get_sorted_students():
     assignment_id = request.args.get('assignment_id', type=int)
+<<<<<<< Updated upstream
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True) # dictionary=True makes rows look like JSON
@@ -275,6 +577,41 @@ def get_sorted_students():
     try:
         # SQL JOIN to get student info and their scores
         if assignment_id:
+=======
+    include_scores = request.args.get('include_scores', '').lower() == 'true'
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        if include_scores:
+            query = """
+                SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
+                       COALESCE(AVG(ag.score), 0) AS average_score
+                FROM students s
+                LEFT JOIN assignment_grade ag ON s.student_id = ag.student_id
+                GROUP BY s.student_id, s.first_name, s.middle_name, s.last_name
+            """
+            cursor.execute(query)
+            students_data = clean(cursor.fetchall())
+
+            for s in students_data:
+                s['score'] = s['average_score']
+            sorted_data = bubble_sort_students_by_score(students_data)
+
+            if students_data:
+                avg = sum(float(s['average_score']) for s in students_data) / len(students_data)
+            else:
+                avg = 0
+
+            return jsonify({
+                "students": sorted_data,
+                "average": round(avg, 2),
+                "count": len(sorted_data)
+            }), 200
+
+        elif assignment_id:
+>>>>>>> Stashed changes
             query = """
                 SELECT s.student_id, s.first_name, s.middle_name, s.last_name, ag.score 
                 FROM students s
@@ -293,10 +630,15 @@ def get_sorted_students():
         students_data = cursor.fetchall()
         students_data = clean(students_data)
 
+<<<<<<< Updated upstream
         # Pass the DB results through your sorting algorithm
         sorted_data = bubble_sort_students_by_score(students_data)
 
         # Calculate the average
+=======
+        sorted_data = bubble_sort_students_by_score(students_data)
+
+>>>>>>> Stashed changes
         if students_data:
             avg = sum(float(s['score']) for s in students_data) / len(students_data)
         else:
@@ -312,7 +654,176 @@ def get_sorted_students():
         return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
+<<<<<<< Updated upstream
         conn.close()
+=======
+
+
+# ==================== STATS ====================
+
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute("SELECT COUNT(*) AS total FROM students")
+        total_students = cursor.fetchone()['total']
+
+        cursor.execute("SELECT COUNT(DISTINCT student_id) AS enrolled FROM enrollments")
+        enrolled_students = cursor.fetchone()['enrolled']
+
+        cursor.execute("SELECT AVG(score) AS avg_score, MAX(score) AS max_score FROM assignment_grade")
+        score_row = cursor.fetchone()
+        avg_score = float(score_row['avg_score']) if score_row['avg_score'] is not None else 0
+        highest_score = float(score_row['max_score']) if score_row['max_score'] is not None else 0
+
+        cursor.execute("SELECT COUNT(*) AS passing FROM assignment_grade WHERE score >= 60")
+        passing_count = cursor.fetchone()['passing']
+
+        cursor.execute("SELECT COUNT(*) AS total FROM assignment_grade")
+        total_grades = cursor.fetchone()['total']
+
+        passing_rate = round((passing_count / total_grades) * 100, 2) if total_grades > 0 else 0
+
+        return jsonify({
+            "totalStudents": total_students,
+            "enrolledStudents": enrolled_students,
+            "averageScore": round(avg_score, 2),
+            "highestScore": round(highest_score, 2),
+            "passingRate": passing_rate,
+        }), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+# ==================== GRADING ====================
+
+@app.route('/api/grades', methods=['GET'])
+def get_grades():
+    """Get students with their scores for a given course and optional assignment."""
+    course_id = request.args.get('course_id', type=int)
+    assignment_id = request.args.get('assignment_id', type=int)
+
+    if not course_id:
+        return jsonify({"error": "course_id is required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        if assignment_id:
+            query = """
+                SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
+                       ag.score, ag.score_id
+                FROM students s
+                JOIN enrollments e ON s.student_id = e.student_id AND e.course_id = %s
+                LEFT JOIN assignment_grade ag ON s.student_id = ag.student_id AND ag.assignment_id = %s
+                ORDER BY s.last_name, s.first_name
+            """
+            cursor.execute(query, (course_id, assignment_id))
+        else:
+            query = """
+                SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
+                       COALESCE(AVG(ag.score), 0) AS average_score,
+                       COUNT(ag.score_id) AS graded_count
+                FROM students s
+                JOIN enrollments e ON s.student_id = e.student_id AND e.course_id = %s
+                LEFT JOIN assignments a ON a.course_id = %s
+                LEFT JOIN assignment_grade ag ON s.student_id = ag.student_id AND ag.assignment_id = a.assignment_id
+                GROUP BY s.student_id, s.first_name, s.middle_name, s.last_name
+                ORDER BY s.last_name, s.first_name
+            """
+            cursor.execute(query, (course_id, course_id))
+
+        students = clean(cursor.fetchall())
+        return jsonify(students), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/grades', methods=['POST'])
+def save_grade():
+    """Save or update a single student's grade for an assignment."""
+    data = request.get_json()
+    student_id = data.get("student_id")
+    assignment_id = data.get("assignment_id")
+    score = data.get("score")
+
+    if not student_id or not assignment_id or score is None:
+        return jsonify({"error": "student_id, assignment_id, and score are required"}), 400
+
+    if not (0 <= float(score) <= 100):
+        return jsonify({"error": "Score must be between 0 and 100"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            INSERT INTO assignment_grade (student_id, assignment_id, score)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE score = VALUES(score)
+        """, (student_id, assignment_id, score))
+        conn.commit()
+        return jsonify({"message": "Grade saved"}), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/grades/bulk', methods=['POST'])
+def save_grades_bulk():
+    """Save multiple grades at once."""
+    data = request.get_json()
+    grades = data.get("grades", [])
+    assignment_id = data.get("assignment_id")
+    course_id = data.get("course_id")
+
+    if not assignment_id or not grades:
+        return jsonify({"error": "assignment_id and grades are required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        for g in grades:
+            sid = g.get("student_id")
+            score = g.get("score")
+            if sid is None or score is None:
+                continue
+            if not (0 <= float(score) <= 100):
+                continue
+
+            if course_id:
+                cursor.execute(
+                    "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
+                    (sid, course_id)
+                )
+
+            cursor.execute("""
+                INSERT INTO assignment_grade (student_id, assignment_id, score)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE score = VALUES(score)
+            """, (sid, assignment_id, score))
+
+        conn.commit()
+        return jsonify({"message": f"{len(grades)} grades saved"}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+>>>>>>> Stashed changes
 
 
 # ==================== AVERAGE ====================
@@ -321,11 +832,18 @@ def get_sorted_students():
 def get_average():
     assignment_id = request.args.get('assignment_id', type=int)
 
+<<<<<<< Updated upstream
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
     try:
         # Let MySQL do the math for you!
+=======
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+>>>>>>> Stashed changes
         if assignment_id:
             query = "SELECT AVG(score) as average_score FROM assignment_grade WHERE assignment_id = %s"
             cursor.execute(query, (assignment_id,))
@@ -334,20 +852,32 @@ def get_average():
             cursor.execute(query)
 
         result = cursor.fetchone()
+<<<<<<< Updated upstream
         
         # Handle the case where the DB is empty (AVG returns None)
         avg = result['average_score'] if result['average_score'] is not None else 0
         
         # Convert Decimal to float for JSON serialization
+=======
+        avg = result['average_score'] if result['average_score'] is not None else 0
+
+>>>>>>> Stashed changes
         return jsonify({"average_score": round(float(avg), 2)}), 200
 
     except mysql.connector.Error as err:
         return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
+<<<<<<< Updated upstream
         conn.close()
+=======
+>>>>>>> Stashed changes
 
 
 if __name__ == '__main__':
     init_pool()
+<<<<<<< Updated upstream
+=======
+    seed_default_user()
+>>>>>>> Stashed changes
     app.run(host='0.0.0.0', port=5000, debug=True)
