@@ -1,0 +1,31 @@
+# To start everything: run docker-compose up -d
+# To stop everything for the night: run docker-compose stop
+# To restart the next day: run docker-compose start
+
+services:
+  # 1. The Database Service
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password # Change this
+      MYSQL_DATABASE: dashboard_db # It will auto-create this DB for you!
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql # This saves your data so it isn't deleted
+
+  # 2. Your Flask Backend Service
+  backend:
+    build: . # Builds the Dockerfile we just made
+    ports:
+      - "5000:5000" # Assumes Flask runs on port 5000
+    depends_on:
+      - db
+    volumes:
+      - ./Backend:/app/Backend # Live-reloads your Python code so you don't have to rebuild constantly!
+    environment:
+      # Tell Flask how to connect to the 'db' service:
+      DATABASE_URL: mysql+pymysql://root:root_password@db:3306/dashboard_db
+
+volumes:
+  db_data:
