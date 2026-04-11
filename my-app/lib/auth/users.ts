@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { RowDataPacket } from "mysql2/promise";
+import type { RowDataPacket, ResultSetHeader } from "mysql2/promise";
+import bcrypt from "bcryptjs";
 import { getDbPool } from "@/lib/db";
 
 export type AuthUserRecord = {
@@ -24,6 +25,52 @@ export const credentialsSchema = z.object({
     .min(8, "Invalid credentials")
     .max(128, "Invalid credentials"),
 });
+
+export const registrationSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Please enter a valid email address")
+    .max(254, "Email is too long")
+    .transform((value) => value.toLowerCase()),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(128, "Password is too long"),
+  firstName: z
+    .string()
+    .trim()
+    .min(1, "First name is required")
+    .max(50, "First name is too long"),
+  lastName: z
+    .string()
+    .trim()
+    .min(1, "Last name is required")
+    .max(50, "Last name is too long"),
+});
+
+const BCRYPT_ROUNDS = 12;
+
+export async function createUser(
+  data: z.infer<typeof registrationSchema>,
+): Promise<{ userId: number } | { error: string }> {
+  const db = getDbPool();
+
+  const existing = await findUserByEmail(data.email);
+  if (existing) {
+    return { error: "An account with this email already exists" };
+  }
+
+  const passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+
+  const [result] = await db.execute<ResultSetHeader>(
+    `INSERT INTO users (email, password_hash, first_name, last_name, is_active, session_version)
+     VALUES (?, ?, ?, ?, 1, 1)`,
+    [data.email, passwordHash, data.firstName, data.lastName],
+  );
+
+  return { userId: result.insertId };
+}
 
 type UserRow = RowDataPacket & {
   user_id: number;

@@ -20,7 +20,8 @@ const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }: AuthorizedCallbackArgs) {
       const isAuthenticated = Boolean(auth?.user);
-      const isAuthPage = nextUrl.pathname === "/login";
+      const isAuthPage =
+        nextUrl.pathname === "/login" || nextUrl.pathname === "/register";
 
       if (!isAuthenticated && isAuthPage) {
         return true;

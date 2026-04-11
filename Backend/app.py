@@ -258,7 +258,7 @@ def create_assignment(course_id):
             lname = g.get("last_name", "")
             score = g.get("score", 0)
 
-            if not (0 <= float(score) <= 100):
+            if float(score) < 0:
                 continue
 
             cursor.execute("""
@@ -337,9 +337,12 @@ def add_student_data():
             )
 
         if score is not None:
-            if not (0 <= score <= 100):
-                return jsonify({"error": "Score must be between 0 and 100"}), 400
             assignment_id = data.get("assignment_id", 1)
+            cursor.execute("SELECT max_points FROM assignments WHERE assignment_id = %s", (assignment_id,))
+            assignment_row = cursor.fetchone()
+            max_pts = assignment_row[0] if assignment_row else 100
+            if not (0 <= score <= max_pts):
+                return jsonify({"error": f"Score must be between 0 and {max_pts}"}), 400
             cursor.execute(
                 "INSERT INTO assignment_grade (student_id, assignment_id, score) VALUES (%s, %s, %s)",
                 (student_id, assignment_id, score)
@@ -464,23 +467,41 @@ def enroll_students_in_course(course_id):
 def get_sorted_students():
     assignment_id = request.args.get('assignment_id', type=int)
     include_scores = request.args.get('include_scores', '').lower() == 'true'
+    course_id = request.args.get('course_id', type=int)
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     
     try:
         if include_scores:
-            query = """
-                SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
-                       COALESCE(AVG(ag.score), 0) AS average_score
-                FROM students s
-                LEFT JOIN assignment_grade ag ON s.student_id = ag.student_id
-                GROUP BY s.student_id, s.first_name, s.middle_name, s.last_name
-            """
-            cursor.execute(query)
+            if course_id:
+                query = """
+                    SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
+                           SUM(ag.score) AS total_points,
+                           SUM(a.max_points) AS total_possible
+                    FROM students s
+                    JOIN enrollments e ON s.student_id = e.student_id AND e.course_id = %s
+                    JOIN assignment_grade ag ON s.student_id = ag.student_id
+                    JOIN assignments a ON ag.assignment_id = a.assignment_id AND a.course_id = %s
+                    GROUP BY s.student_id, s.first_name, s.middle_name, s.last_name
+                """
+                cursor.execute(query, (course_id, course_id))
+            else:
+                query = """
+                    SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
+                           SUM(ag.score) AS total_points,
+                           SUM(a.max_points) AS total_possible
+                    FROM students s
+                    JOIN assignment_grade ag ON s.student_id = ag.student_id
+                    JOIN assignments a ON ag.assignment_id = a.assignment_id
+                    GROUP BY s.student_id, s.first_name, s.middle_name, s.last_name
+                """
+                cursor.execute(query)
             students_data = clean(cursor.fetchall())
 
             for s in students_data:
+                possible = float(s['total_possible'])
+                s['average_score'] = round(float(s['total_points']) / possible * 100, 2) if possible > 0 else 0
                 s['score'] = s['average_score']
             sorted_data = bubble_sort_students_by_score(students_data)
 
@@ -497,35 +518,37 @@ def get_sorted_students():
 
         elif assignment_id:
             query = """
-                SELECT s.student_id, s.first_name, s.middle_name, s.last_name, ag.score 
+                SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
+                       ag.score, a.max_points, a.assignment_id, a.title AS assignment_title
                 FROM students s
                 JOIN assignment_grade ag ON s.student_id = ag.student_id
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
                 WHERE ag.assignment_id = %s
             """
             cursor.execute(query, (assignment_id,))
+            students_data = clean(cursor.fetchall())
+            sorted_data = bubble_sort_students_by_score(students_data)
+
+            total_score = sum(float(s['score']) for s in students_data)
+            total_possible = sum(float(s['max_points']) for s in students_data)
+            avg = round(total_score / total_possible * 100, 2) if total_possible > 0 else 0
+
+            return jsonify({
+                "students": sorted_data,
+                "average": avg,
+                "count": len(sorted_data)
+            }), 200
+
         else:
             query = """
-                SELECT s.student_id, s.first_name, s.middle_name, s.last_name, ag.score 
+                SELECT s.student_id, s.first_name, s.middle_name, s.last_name
                 FROM students s
-                JOIN assignment_grade ag ON s.student_id = ag.student_id
+                ORDER BY s.last_name, s.first_name
             """
             cursor.execute(query)
+            students_data = cursor.fetchall()
 
-        students_data = cursor.fetchall()
-        students_data = clean(students_data)
-
-        sorted_data = bubble_sort_students_by_score(students_data)
-
-        if students_data:
-            avg = sum(float(s['score']) for s in students_data) / len(students_data)
-        else:
-            avg = 0
-        
-        return jsonify({
-            "students": sorted_data,
-            "average": round(avg, 2),
-            "count": len(sorted_data)
-        }), 200
+            return jsonify(students_data), 200
 
     except mysql.connector.Error as err:
         return jsonify({"error": str(err)}), 500
@@ -537,34 +560,84 @@ def get_sorted_students():
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
+    course_id = request.args.get('course_id', type=int)
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 
     try:
-        cursor.execute("SELECT COUNT(*) AS total FROM students")
-        total_students = cursor.fetchone()['total']
+        if course_id:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT s.student_id) AS total
+                FROM students s
+                JOIN enrollments e ON s.student_id = e.student_id AND e.course_id = %s
+            """, (course_id,))
+            total_students = cursor.fetchone()['total']
+            enrolled_students = total_students
 
-        cursor.execute("SELECT COUNT(DISTINCT student_id) AS enrolled FROM enrollments")
-        enrolled_students = cursor.fetchone()['enrolled']
+            cursor.execute("""
+                SELECT COALESCE(SUM(ag.score), 0) AS total_score,
+                       COALESCE(SUM(a.max_points), 0) AS total_possible,
+                       MAX(ag.score / a.max_points * 100) AS highest_pct
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+                JOIN enrollments e ON ag.student_id = e.student_id AND e.course_id = %s
+                WHERE a.course_id = %s
+            """, (course_id, course_id))
+            score_row = cursor.fetchone()
 
-        cursor.execute("SELECT AVG(score) AS avg_score, MAX(score) AS max_score FROM assignment_grade")
-        score_row = cursor.fetchone()
-        avg_score = float(score_row['avg_score']) if score_row['avg_score'] is not None else 0
-        highest_score = float(score_row['max_score']) if score_row['max_score'] is not None else 0
+            cursor.execute("""
+                SELECT COUNT(*) AS passing
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+                JOIN enrollments e ON ag.student_id = e.student_id AND e.course_id = %s
+                WHERE a.course_id = %s AND (ag.score / a.max_points * 100) >= 60
+            """, (course_id, course_id))
+            passing_count = cursor.fetchone()['passing']
 
-        cursor.execute("SELECT COUNT(*) AS passing FROM assignment_grade WHERE score >= 60")
-        passing_count = cursor.fetchone()['passing']
+            cursor.execute("""
+                SELECT COUNT(*) AS total
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+                WHERE a.course_id = %s
+            """, (course_id,))
+            total_grades = cursor.fetchone()['total']
+        else:
+            cursor.execute("SELECT COUNT(*) AS total FROM students")
+            total_students = cursor.fetchone()['total']
 
-        cursor.execute("SELECT COUNT(*) AS total FROM assignment_grade")
-        total_grades = cursor.fetchone()['total']
+            cursor.execute("SELECT COUNT(DISTINCT student_id) AS enrolled FROM enrollments")
+            enrolled_students = cursor.fetchone()['enrolled']
 
+            cursor.execute("""
+                SELECT COALESCE(SUM(ag.score), 0) AS total_score,
+                       COALESCE(SUM(a.max_points), 0) AS total_possible,
+                       MAX(ag.score / a.max_points * 100) AS highest_pct
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+            """)
+            score_row = cursor.fetchone()
+
+            cursor.execute("""
+                SELECT COUNT(*) AS passing
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+                WHERE (ag.score / a.max_points * 100) >= 60
+            """)
+            passing_count = cursor.fetchone()['passing']
+
+            cursor.execute("SELECT COUNT(*) AS total FROM assignment_grade")
+            total_grades = cursor.fetchone()['total']
+
+        total_possible = float(score_row['total_possible'])
+        avg_score = round(float(score_row['total_score']) / total_possible * 100, 2) if total_possible > 0 else 0
+        highest_score = round(float(score_row['highest_pct']), 2) if score_row['highest_pct'] is not None else 0
         passing_rate = round((passing_count / total_grades) * 100, 2) if total_grades > 0 else 0
 
         return jsonify({
             "totalStudents": total_students,
             "enrolledStudents": enrolled_students,
-            "averageScore": round(avg_score, 2),
-            "highestScore": round(highest_score, 2),
+            "averageScore": avg_score,
+            "highestScore": highest_score,
             "passingRate": passing_rate,
         }), 200
 
@@ -592,17 +665,21 @@ def get_grades():
         if assignment_id:
             query = """
                 SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
-                       ag.score, ag.score_id
+                       ag.score, ag.score_id, a.max_points
                 FROM students s
                 JOIN enrollments e ON s.student_id = e.student_id AND e.course_id = %s
                 LEFT JOIN assignment_grade ag ON s.student_id = ag.student_id AND ag.assignment_id = %s
+                LEFT JOIN assignments a ON ag.assignment_id = a.assignment_id
                 ORDER BY s.last_name, s.first_name
             """
             cursor.execute(query, (course_id, assignment_id))
         else:
             query = """
                 SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
-                       COALESCE(AVG(ag.score), 0) AS average_score,
+                       CASE WHEN SUM(a.max_points) > 0
+                            THEN ROUND(SUM(ag.score) / SUM(a.max_points) * 100, 2)
+                            ELSE 0
+                       END AS average_score,
                        COUNT(ag.score_id) AS graded_count
                 FROM students s
                 JOIN enrollments e ON s.student_id = e.student_id AND e.course_id = %s
@@ -633,13 +710,19 @@ def save_grade():
     if not student_id or not assignment_id or score is None:
         return jsonify({"error": "student_id, assignment_id, and score are required"}), 400
 
-    if not (0 <= float(score) <= 100):
-        return jsonify({"error": "Score must be between 0 and 100"}), 400
-
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     try:
+        cursor.execute("SELECT max_points FROM assignments WHERE assignment_id = %s", (assignment_id,))
+        assignment_row = cursor.fetchone()
+        if not assignment_row:
+            return jsonify({"error": "Assignment not found"}), 404
+        max_pts = float(assignment_row['max_points'])
+
+        if not (0 <= float(score) <= max_pts):
+            return jsonify({"error": f"Score must be between 0 and {int(max_pts)}"}), 400
+
         cursor.execute("""
             INSERT INTO assignment_grade (student_id, assignment_id, score)
             VALUES (%s, %s, %s)
@@ -669,12 +752,18 @@ def save_grades_bulk():
     cursor = conn.cursor()
 
     try:
+        cursor.execute("SELECT max_points FROM assignments WHERE assignment_id = %s", (assignment_id,))
+        assignment_row = cursor.fetchone()
+        if not assignment_row:
+            return jsonify({"error": "Assignment not found"}), 404
+        max_pts = float(assignment_row[0])
+
         for g in grades:
             sid = g.get("student_id")
             score = g.get("score")
             if sid is None or score is None:
                 continue
-            if not (0 <= float(score) <= 100):
+            if not (0 <= float(score) <= max_pts):
                 continue
 
             if course_id:
@@ -710,16 +799,28 @@ def get_average():
     
     try:
         if assignment_id:
-            query = "SELECT AVG(score) as average_score FROM assignment_grade WHERE assignment_id = %s"
+            query = """
+                SELECT COALESCE(SUM(ag.score), 0) AS total_score,
+                       COALESCE(SUM(a.max_points), 0) AS total_possible
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+                WHERE ag.assignment_id = %s
+            """
             cursor.execute(query, (assignment_id,))
         else:
-            query = "SELECT AVG(score) as average_score FROM assignment_grade"
+            query = """
+                SELECT COALESCE(SUM(ag.score), 0) AS total_score,
+                       COALESCE(SUM(a.max_points), 0) AS total_possible
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+            """
             cursor.execute(query)
 
         result = cursor.fetchone()
-        avg = result['average_score'] if result['average_score'] is not None else 0
+        total_possible = float(result['total_possible'])
+        avg = round(float(result['total_score']) / total_possible * 100, 2) if total_possible > 0 else 0
 
-        return jsonify({"average_score": round(float(avg), 2)}), 200
+        return jsonify({"average_score": avg}), 200
 
     except mysql.connector.Error as err:
         return jsonify({"error": str(err)}), 500

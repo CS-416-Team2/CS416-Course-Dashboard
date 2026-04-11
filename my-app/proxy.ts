@@ -5,7 +5,7 @@ const SESSION_COOKIE = "coursehub.session-token";
 
 const protectedPrefixes = ["/dashboard", "/courses", "/students", "/assignments", "/grading"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { nextUrl } = request;
   const hasSession = request.cookies.has(SESSION_COOKIE);
   const isProtectedRoute = protectedPrefixes.some((prefix) =>

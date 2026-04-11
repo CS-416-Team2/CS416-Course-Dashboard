@@ -1,14 +1,12 @@
 AUTH_SECRET=replace_with_a_random_64_plus_character_secret
-
-# In this case, our AUTH TOKEN IS Q6xx_D5KS-vbzUSFXmq57C7x9ks1cX3WeN23CTrD6intphiXaoOT-M0L2po3LVFSkQv1xO9O5x4x3pMjPfSfnQ
 AUTH_TRUST_HOST=true
 
 # Next.js server-side DB connection (never expose with NEXT_PUBLIC_)
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASS=replace_with_db_password
-DB_NAME=cs416_project2
+DB_PASS=your_mysql_password
+DB_NAME=school_db
 
 # Flask backend origin used by the protected API proxy route.
 BACKEND_API_BASE_URL=http://127.0.0.1:5000
