@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS students (
     student_id INT AUTO_INCREMENT PRIMARY KEY,
     first_name VARCHAR(50) NOT NULL,
     middle_name VARCHAR(50),
-    last_name VARCHAR(50) NOT NULL
+    last_name VARCHAR(50) NOT NULL,
+    created_by INT NULL,
+    FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
 -- 4. Courses
@@ -83,7 +85,8 @@ CREATE TABLE IF NOT EXISTS assignment_grade (
     score DECIMAL(5, 2) NOT NULL,
     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
     FOREIGN KEY (assignment_id) REFERENCES assignments(assignment_id) ON DELETE CASCADE,
-    CONSTRAINT chk_score_non_negative CHECK (score >= 0)
+    CONSTRAINT chk_score_non_negative CHECK (score >= 0),
+    UNIQUE KEY unique_student_assignment (student_id, assignment_id)
 );
 
 -- Seed default instructor:

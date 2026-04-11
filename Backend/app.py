@@ -108,12 +108,45 @@ def bubble_sort_students_by_score(data):
     return data
 
 
+# --- USER IDENTITY (set by Next.js proxy via X-User-Id header) ---
+
+@app.before_request
+def set_user_context():
+    raw = request.headers.get('X-User-Id')
+    g.user_id = None
+    if raw:
+        try:
+            uid = int(raw)
+            if uid > 0:
+                g.user_id = uid
+        except (ValueError, TypeError):
+            pass
+
+
+def require_user():
+    if not g.user_id:
+        return None
+    return g.user_id
+
+
+def verify_course_owner(cursor, course_id, user_id):
+    cursor.execute(
+        "SELECT 1 FROM courses WHERE course_id = %s AND instructor_id = %s",
+        (course_id, user_id)
+    )
+    return cursor.fetchone() is not None
+
+
 # --- API ROUTES ---
 
 # ==================== COURSES ====================
 
 @app.route('/api/courses', methods=['GET'])
 def get_courses():
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 
@@ -125,9 +158,10 @@ def get_courses():
             FROM courses c
             LEFT JOIN enrollments e ON c.course_id = e.course_id
             LEFT JOIN assignments a ON c.course_id = a.course_id
+            WHERE c.instructor_id = %s
             GROUP BY c.course_id, c.course_name
         """
-        cursor.execute(query)
+        cursor.execute(query, (user_id,))
         courses = cursor.fetchall()
         return jsonify(clean(courses)), 200
 
@@ -139,6 +173,10 @@ def get_courses():
 
 @app.route('/api/courses', methods=['POST'])
 def create_course():
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     course_name = data.get("course_name", "").strip()
 
@@ -151,7 +189,7 @@ def create_course():
     try:
         cursor.execute(
             "INSERT INTO courses (instructor_id, course_name) VALUES (%s, %s)",
-            (1, course_name)
+            (user_id, course_name)
         )
         conn.commit()
         return jsonify({"message": "Course created", "course_id": cursor.lastrowid}), 201
@@ -162,14 +200,83 @@ def create_course():
         cursor.close()
 
 
+@app.route('/api/courses/<int:course_id>', methods=['PUT'])
+def update_course(course_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    course_name = data.get("course_name", "").strip()
+    if not course_name:
+        return jsonify({"error": "course_name is required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
+        cursor.execute(
+            "UPDATE courses SET course_name = %s WHERE course_id = %s AND instructor_id = %s",
+            (course_name, course_id, user_id)
+        )
+        conn.commit()
+        return jsonify({"message": "Course updated"}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
 # ==================== ASSIGNMENTS ====================
 
-@app.route('/api/courses/<int:course_id>/assignments', methods=['GET'])
-def get_assignments(course_id):
+@app.route('/api/assignments', methods=['GET'])
+def get_all_assignments():
+    """Return every assignment belonging to the current user's courses."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 
     try:
+        cursor.execute("""
+            SELECT a.assignment_id, a.title, a.max_points,
+                   c.course_id, c.course_name,
+                   COUNT(ag.score_id) AS grade_count
+            FROM assignments a
+            JOIN courses c ON a.course_id = c.course_id
+            LEFT JOIN assignment_grade ag ON a.assignment_id = ag.assignment_id
+            WHERE c.instructor_id = %s
+            GROUP BY a.assignment_id, a.title, a.max_points, c.course_id, c.course_name
+            ORDER BY c.course_name, a.title
+        """, (user_id,))
+        return jsonify(clean(cursor.fetchall())), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/courses/<int:course_id>/assignments', methods=['GET'])
+def get_assignments(course_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         query = """
             SELECT a.assignment_id, a.title, a.max_points,
                    COUNT(ag.score_id) AS grade_count
@@ -191,6 +298,10 @@ def get_assignments(course_id):
 @app.route('/api/assignments', methods=['POST'])
 def create_assignment_simple():
     """Create an assignment from the dashboard form (course_id in JSON body)."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     course_id = data.get("course_id")
     title = data.get("title", "").strip()
@@ -205,6 +316,9 @@ def create_assignment_simple():
     cursor = conn.cursor()
 
     try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         cursor.execute(
             "INSERT INTO assignments (course_id, title, max_points) VALUES (%s, %s, %s)",
             (course_id, title, max_points)
@@ -234,9 +348,14 @@ def create_assignment(course_id):
         ]
     }
     """
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     title = data.get("title", "").strip()
     grades = data.get("grades", [])
+    max_points = data.get("max_points", 100)
 
     if not title:
         return jsonify({"error": "title is required"}), 400
@@ -245,9 +364,12 @@ def create_assignment(course_id):
     cursor = conn.cursor()
 
     try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         cursor.execute(
             "INSERT INTO assignments (course_id, title, max_points) VALUES (%s, %s, %s)",
-            (course_id, title, 100)
+            (course_id, title, max_points)
         )
         assignment_id = cursor.lastrowid
 
@@ -262,13 +384,13 @@ def create_assignment(course_id):
                 continue
 
             cursor.execute("""
-                INSERT INTO students (student_id, first_name, middle_name, last_name)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO students (student_id, first_name, middle_name, last_name, created_by)
+                VALUES (%s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     first_name = VALUES(first_name),
                     middle_name = VALUES(middle_name),
                     last_name = VALUES(last_name)
-            """, (sid, fname, mname, lname))
+            """, (sid, fname, mname, lname, user_id))
 
             cursor.execute(
                 "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
@@ -294,10 +416,70 @@ def create_assignment(course_id):
         cursor.close()
 
 
+@app.route('/api/assignments/<int:assignment_id>', methods=['PUT'])
+def update_assignment(assignment_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    title = data.get("title", "").strip()
+    max_points = data.get("max_points")
+
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT a.max_points, a.course_id FROM assignments a
+            JOIN courses c ON a.course_id = c.course_id
+            WHERE a.assignment_id = %s AND c.instructor_id = %s
+        """, (assignment_id, user_id))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "Assignment not found"}), 404
+
+        new_max = int(max_points) if max_points is not None else int(row['max_points'])
+        if new_max <= 0:
+            return jsonify({"error": "max_points must be positive"}), 400
+
+        old_max = int(row['max_points'])
+        cursor.execute(
+            "UPDATE assignments SET title = %s, max_points = %s WHERE assignment_id = %s",
+            (title, new_max, assignment_id)
+        )
+
+        if new_max != old_max:
+            cursor.execute(
+                "DELETE FROM assignment_grade WHERE assignment_id = %s",
+                (assignment_id,)
+            )
+
+        conn.commit()
+        grades_cleared = new_max != old_max
+        msg = "Assignment updated"
+        if grades_cleared:
+            msg += " — grades cleared because max points changed"
+        return jsonify({"message": msg, "grades_cleared": grades_cleared}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
 # ==================== STUDENTS ====================
 
 @app.route('/api/students', methods=['POST'])
 def add_student_data():
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     first_name = data.get("first_name", "").strip()
     middle_name = data.get("middle_name", "") or ""
@@ -314,19 +496,23 @@ def add_student_data():
     cursor = conn.cursor()
 
     try:
+        for cid in course_ids:
+            if not verify_course_owner(cursor, cid, user_id):
+                return jsonify({"error": "Forbidden"}), 403
+
         if student_id:
             cursor.execute("""
-                INSERT INTO students (student_id, first_name, middle_name, last_name)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO students (student_id, first_name, middle_name, last_name, created_by)
+                VALUES (%s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     first_name = VALUES(first_name),
                     middle_name = VALUES(middle_name),
                     last_name = VALUES(last_name)
-            """, (student_id, first_name, middle_name, last_name))
+            """, (student_id, first_name, middle_name, last_name, user_id))
         else:
             cursor.execute(
-                "INSERT INTO students (first_name, middle_name, last_name) VALUES (%s, %s, %s)",
-                (first_name, middle_name, last_name)
+                "INSERT INTO students (first_name, middle_name, last_name, created_by) VALUES (%s, %s, %s, %s)",
+                (first_name, middle_name, last_name, user_id)
             )
             student_id = cursor.lastrowid
 
@@ -360,6 +546,10 @@ def add_student_data():
 @app.route('/api/students/<int:student_id>', methods=['PUT'])
 def update_student(student_id):
     """Update student info and/or their course enrollments."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     conn = get_db()
     cursor = conn.cursor()
@@ -376,10 +566,17 @@ def update_student(student_id):
 
         if "course_ids" in data:
             course_ids = data["course_ids"]
-            cursor.execute("DELETE FROM enrollments WHERE student_id = %s", (student_id,))
+            for cid in course_ids:
+                if not verify_course_owner(cursor, cid, user_id):
+                    return jsonify({"error": "Forbidden"}), 403
+            cursor.execute("""
+                DELETE FROM enrollments
+                WHERE student_id = %s
+                  AND course_id IN (SELECT course_id FROM courses WHERE instructor_id = %s)
+            """, (student_id, user_id))
             for cid in course_ids:
                 cursor.execute(
-                    "INSERT INTO enrollments (student_id, course_id) VALUES (%s, %s)",
+                    "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
                     (student_id, cid)
                 )
 
@@ -395,6 +592,10 @@ def update_student(student_id):
 
 @app.route('/api/students/<int:student_id>/enrollments', methods=['GET'])
 def get_student_enrollments(student_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 
@@ -403,8 +604,8 @@ def get_student_enrollments(student_id):
             SELECT c.course_id, c.course_name
             FROM enrollments e
             JOIN courses c ON e.course_id = c.course_id
-            WHERE e.student_id = %s
-        """, (student_id,))
+            WHERE e.student_id = %s AND c.instructor_id = %s
+        """, (student_id, user_id))
         return jsonify(cursor.fetchall()), 200
 
     except mysql.connector.Error as err:
@@ -415,19 +616,29 @@ def get_student_enrollments(student_id):
 
 @app.route('/api/courses/<int:course_id>/unenrolled', methods=['GET'])
 def get_unenrolled_students(course_id):
-    """Get students NOT enrolled in a given course."""
+    """Get students enrolled in the user's other courses but NOT in this one."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 
     try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         cursor.execute("""
-            SELECT s.student_id, s.first_name, s.middle_name, s.last_name
+            SELECT DISTINCT s.student_id, s.first_name, s.middle_name, s.last_name
             FROM students s
-            WHERE s.student_id NOT IN (
-                SELECT e.student_id FROM enrollments e WHERE e.course_id = %s
-            )
+            LEFT JOIN enrollments e ON s.student_id = e.student_id
+            LEFT JOIN courses c ON e.course_id = c.course_id
+            WHERE (s.created_by = %s OR c.instructor_id = %s)
+              AND s.student_id NOT IN (
+                  SELECT e2.student_id FROM enrollments e2 WHERE e2.course_id = %s
+              )
             ORDER BY s.last_name, s.first_name
-        """, (course_id,))
+        """, (user_id, user_id, course_id))
         return jsonify(cursor.fetchall()), 200
 
     except mysql.connector.Error as err:
@@ -439,6 +650,10 @@ def get_unenrolled_students(course_id):
 @app.route('/api/courses/<int:course_id>/enroll', methods=['POST'])
 def enroll_students_in_course(course_id):
     """Enroll one or more students into a course."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     student_ids = data.get("student_ids", [])
 
@@ -449,6 +664,9 @@ def enroll_students_in_course(course_id):
     cursor = conn.cursor()
 
     try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         for sid in student_ids:
             cursor.execute(
                 "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
@@ -465,6 +683,10 @@ def enroll_students_in_course(course_id):
 
 @app.route('/api/students', methods=['GET'])
 def get_sorted_students():
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     assignment_id = request.args.get('assignment_id', type=int)
     include_scores = request.args.get('include_scores', '').lower() == 'true'
     course_id = request.args.get('course_id', type=int)
@@ -475,28 +697,32 @@ def get_sorted_students():
     try:
         if include_scores:
             if course_id:
+                if not verify_course_owner(cursor, course_id, user_id):
+                    return jsonify({"error": "Forbidden"}), 403
                 query = """
                     SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
-                           SUM(ag.score) AS total_points,
-                           SUM(a.max_points) AS total_possible
+                           COALESCE(SUM(ag.score), 0) AS total_points,
+                           COALESCE(SUM(a.max_points), 0) AS total_possible
                     FROM students s
                     JOIN enrollments e ON s.student_id = e.student_id AND e.course_id = %s
-                    JOIN assignment_grade ag ON s.student_id = ag.student_id
-                    JOIN assignments a ON ag.assignment_id = a.assignment_id AND a.course_id = %s
+                    LEFT JOIN assignment_grade ag ON s.student_id = ag.student_id
+                    LEFT JOIN assignments a ON ag.assignment_id = a.assignment_id AND a.course_id = %s
                     GROUP BY s.student_id, s.first_name, s.middle_name, s.last_name
                 """
                 cursor.execute(query, (course_id, course_id))
             else:
                 query = """
                     SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
-                           SUM(ag.score) AS total_points,
-                           SUM(a.max_points) AS total_possible
+                           COALESCE(SUM(ag.score), 0) AS total_points,
+                           COALESCE(SUM(a.max_points), 0) AS total_possible
                     FROM students s
-                    JOIN assignment_grade ag ON s.student_id = ag.student_id
-                    JOIN assignments a ON ag.assignment_id = a.assignment_id
+                    JOIN enrollments e ON s.student_id = e.student_id
+                    JOIN courses c ON e.course_id = c.course_id AND c.instructor_id = %s
+                    LEFT JOIN assignments a ON a.course_id = c.course_id
+                    LEFT JOIN assignment_grade ag ON s.student_id = ag.student_id AND ag.assignment_id = a.assignment_id
                     GROUP BY s.student_id, s.first_name, s.middle_name, s.last_name
                 """
-                cursor.execute(query)
+                cursor.execute(query, (user_id,))
             students_data = clean(cursor.fetchall())
 
             for s in students_data:
@@ -524,8 +750,9 @@ def get_sorted_students():
                 JOIN assignment_grade ag ON s.student_id = ag.student_id
                 JOIN assignments a ON ag.assignment_id = a.assignment_id
                 WHERE ag.assignment_id = %s
+                  AND a.course_id IN (SELECT course_id FROM courses WHERE instructor_id = %s)
             """
-            cursor.execute(query, (assignment_id,))
+            cursor.execute(query, (assignment_id, user_id))
             students_data = clean(cursor.fetchall())
             sorted_data = bubble_sort_students_by_score(students_data)
 
@@ -541,11 +768,15 @@ def get_sorted_students():
 
         else:
             query = """
-                SELECT s.student_id, s.first_name, s.middle_name, s.last_name
+                SELECT DISTINCT s.student_id, s.first_name, s.middle_name, s.last_name
                 FROM students s
+                LEFT JOIN enrollments e ON s.student_id = e.student_id
+                LEFT JOIN courses c ON e.course_id = c.course_id
+                WHERE s.created_by = %s
+                   OR c.instructor_id = %s
                 ORDER BY s.last_name, s.first_name
             """
-            cursor.execute(query)
+            cursor.execute(query, (user_id, user_id))
             students_data = cursor.fetchall()
 
             return jsonify(students_data), 200
@@ -560,12 +791,19 @@ def get_sorted_students():
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     course_id = request.args.get('course_id', type=int)
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 
     try:
         if course_id:
+            if not verify_course_owner(cursor, course_id, user_id):
+                return jsonify({"error": "Forbidden"}), 403
+
             cursor.execute("""
                 SELECT COUNT(DISTINCT s.student_id) AS total
                 FROM students s
@@ -602,10 +840,21 @@ def get_stats():
             """, (course_id,))
             total_grades = cursor.fetchone()['total']
         else:
-            cursor.execute("SELECT COUNT(*) AS total FROM students")
+            cursor.execute("""
+                SELECT COUNT(DISTINCT s.student_id) AS total
+                FROM students s
+                JOIN enrollments e ON s.student_id = e.student_id
+                JOIN courses c ON e.course_id = c.course_id
+                WHERE c.instructor_id = %s
+            """, (user_id,))
             total_students = cursor.fetchone()['total']
 
-            cursor.execute("SELECT COUNT(DISTINCT student_id) AS enrolled FROM enrollments")
+            cursor.execute("""
+                SELECT COUNT(DISTINCT e.student_id) AS enrolled
+                FROM enrollments e
+                JOIN courses c ON e.course_id = c.course_id
+                WHERE c.instructor_id = %s
+            """, (user_id,))
             enrolled_students = cursor.fetchone()['enrolled']
 
             cursor.execute("""
@@ -614,18 +863,27 @@ def get_stats():
                        MAX(ag.score / a.max_points * 100) AS highest_pct
                 FROM assignment_grade ag
                 JOIN assignments a ON ag.assignment_id = a.assignment_id
-            """)
+                JOIN courses c ON a.course_id = c.course_id
+                WHERE c.instructor_id = %s
+            """, (user_id,))
             score_row = cursor.fetchone()
 
             cursor.execute("""
                 SELECT COUNT(*) AS passing
                 FROM assignment_grade ag
                 JOIN assignments a ON ag.assignment_id = a.assignment_id
-                WHERE (ag.score / a.max_points * 100) >= 60
-            """)
+                JOIN courses c ON a.course_id = c.course_id
+                WHERE c.instructor_id = %s AND (ag.score / a.max_points * 100) >= 60
+            """, (user_id,))
             passing_count = cursor.fetchone()['passing']
 
-            cursor.execute("SELECT COUNT(*) AS total FROM assignment_grade")
+            cursor.execute("""
+                SELECT COUNT(*) AS total
+                FROM assignment_grade ag
+                JOIN assignments a ON ag.assignment_id = a.assignment_id
+                JOIN courses c ON a.course_id = c.course_id
+                WHERE c.instructor_id = %s
+            """, (user_id,))
             total_grades = cursor.fetchone()['total']
 
         total_possible = float(score_row['total_possible'])
@@ -652,6 +910,10 @@ def get_stats():
 @app.route('/api/grades', methods=['GET'])
 def get_grades():
     """Get students with their scores for a given course and optional assignment."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     course_id = request.args.get('course_id', type=int)
     assignment_id = request.args.get('assignment_id', type=int)
 
@@ -662,6 +924,9 @@ def get_grades():
     cursor = conn.cursor(dictionary=True)
 
     try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         if assignment_id:
             query = """
                 SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
@@ -702,6 +967,10 @@ def get_grades():
 @app.route('/api/grades', methods=['POST'])
 def save_grade():
     """Save or update a single student's grade for an assignment."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     student_id = data.get("student_id")
     assignment_id = data.get("assignment_id")
@@ -714,7 +983,11 @@ def save_grade():
     cursor = conn.cursor(dictionary=True)
 
     try:
-        cursor.execute("SELECT max_points FROM assignments WHERE assignment_id = %s", (assignment_id,))
+        cursor.execute("""
+            SELECT a.max_points FROM assignments a
+            JOIN courses c ON a.course_id = c.course_id
+            WHERE a.assignment_id = %s AND c.instructor_id = %s
+        """, (assignment_id, user_id))
         assignment_row = cursor.fetchone()
         if not assignment_row:
             return jsonify({"error": "Assignment not found"}), 404
@@ -740,6 +1013,10 @@ def save_grade():
 @app.route('/api/grades/bulk', methods=['POST'])
 def save_grades_bulk():
     """Save multiple grades at once."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     grades = data.get("grades", [])
     assignment_id = data.get("assignment_id")
@@ -752,11 +1029,18 @@ def save_grades_bulk():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT max_points FROM assignments WHERE assignment_id = %s", (assignment_id,))
+        cursor.execute("""
+            SELECT a.max_points FROM assignments a
+            JOIN courses c ON a.course_id = c.course_id
+            WHERE a.assignment_id = %s AND c.instructor_id = %s
+        """, (assignment_id, user_id))
         assignment_row = cursor.fetchone()
         if not assignment_row:
             return jsonify({"error": "Assignment not found"}), 404
         max_pts = float(assignment_row[0])
+
+        if course_id and not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
 
         for g in grades:
             sid = g.get("student_id")
@@ -765,6 +1049,19 @@ def save_grades_bulk():
                 continue
             if not (0 <= float(score) <= max_pts):
                 continue
+
+            fname = g.get("first_name", "")
+            mname = g.get("middle_name", "")
+            lname = g.get("last_name", "")
+            if fname and lname:
+                cursor.execute("""
+                    INSERT INTO students (student_id, first_name, middle_name, last_name, created_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        first_name = VALUES(first_name),
+                        middle_name = VALUES(middle_name),
+                        last_name = VALUES(last_name)
+                """, (sid, fname, mname, lname, user_id))
 
             if course_id:
                 cursor.execute(
@@ -788,10 +1085,137 @@ def save_grades_bulk():
         cursor.close()
 
 
+# ==================== DELETE ====================
+
+@app.route('/api/courses/<int:course_id>', methods=['DELETE'])
+def delete_course(course_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        if not verify_course_owner(cursor, course_id, user_id):
+            return jsonify({"error": "Forbidden"}), 403
+
+        cursor.execute("""
+            DELETE ag FROM assignment_grade ag
+            JOIN assignments a ON ag.assignment_id = a.assignment_id
+            WHERE a.course_id = %s
+        """, (course_id,))
+        cursor.execute("DELETE FROM assignments WHERE course_id = %s", (course_id,))
+        cursor.execute("DELETE FROM enrollments WHERE course_id = %s", (course_id,))
+        cursor.execute("DELETE FROM courses WHERE course_id = %s AND instructor_id = %s", (course_id, user_id))
+        conn.commit()
+        return jsonify({"message": "Course deleted"}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/assignments/<int:assignment_id>', methods=['DELETE'])
+def delete_assignment(assignment_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT 1 FROM assignments a
+            JOIN courses c ON a.course_id = c.course_id
+            WHERE a.assignment_id = %s AND c.instructor_id = %s
+        """, (assignment_id, user_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Forbidden"}), 403
+
+        cursor.execute("DELETE FROM assignment_grade WHERE assignment_id = %s", (assignment_id,))
+        cursor.execute("DELETE FROM assignments WHERE assignment_id = %s", (assignment_id,))
+        conn.commit()
+        return jsonify({"message": "Assignment deleted"}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/students/<int:student_id>', methods=['DELETE'])
+def delete_student(student_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT 1 FROM students WHERE student_id = %s AND created_by = %s",
+            (student_id, user_id)
+        )
+        if not cursor.fetchone():
+            return jsonify({"error": "Forbidden"}), 403
+
+        cursor.execute("DELETE FROM assignment_grade WHERE student_id = %s", (student_id,))
+        cursor.execute("DELETE FROM enrollments WHERE student_id = %s", (student_id,))
+        cursor.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
+        conn.commit()
+        return jsonify({"message": "Student deleted"}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/grades/<int:score_id>', methods=['DELETE'])
+def delete_grade(score_id):
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT 1 FROM assignment_grade ag
+            JOIN assignments a ON ag.assignment_id = a.assignment_id
+            JOIN courses c ON a.course_id = c.course_id
+            WHERE ag.score_id = %s AND c.instructor_id = %s
+        """, (score_id, user_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Forbidden"}), 403
+
+        cursor.execute("DELETE FROM assignment_grade WHERE score_id = %s", (score_id,))
+        conn.commit()
+        return jsonify({"message": "Grade deleted"}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
 # ==================== AVERAGE ====================
 
 @app.route('/api/average', methods=['GET'])
 def get_average():
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     assignment_id = request.args.get('assignment_id', type=int)
 
     conn = get_db()
@@ -804,17 +1228,20 @@ def get_average():
                        COALESCE(SUM(a.max_points), 0) AS total_possible
                 FROM assignment_grade ag
                 JOIN assignments a ON ag.assignment_id = a.assignment_id
-                WHERE ag.assignment_id = %s
+                JOIN courses c ON a.course_id = c.course_id
+                WHERE ag.assignment_id = %s AND c.instructor_id = %s
             """
-            cursor.execute(query, (assignment_id,))
+            cursor.execute(query, (assignment_id, user_id))
         else:
             query = """
                 SELECT COALESCE(SUM(ag.score), 0) AS total_score,
                        COALESCE(SUM(a.max_points), 0) AS total_possible
                 FROM assignment_grade ag
                 JOIN assignments a ON ag.assignment_id = a.assignment_id
+                JOIN courses c ON a.course_id = c.course_id
+                WHERE c.instructor_id = %s
             """
-            cursor.execute(query)
+            cursor.execute(query, (user_id,))
 
         result = cursor.fetchone()
         total_possible = float(result['total_possible'])

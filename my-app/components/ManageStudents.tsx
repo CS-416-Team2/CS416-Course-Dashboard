@@ -3,18 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-toastify";
-
-interface Student {
-  student_id: number;
-  first_name: string;
-  middle_name: string;
-  last_name: string;
-}
-
-interface Course {
-  course_id: number;
-  course_name: string;
-}
+import type { Student, Course } from "@/lib/schemas";
 
 function parseStudents(json: unknown): Student[] {
   const rows =
@@ -39,6 +28,9 @@ function parseStudents(json: unknown): Student[] {
 
 export default function ManageStudents() {
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editFirst, setEditFirst] = useState("");
+  const [editMiddle, setEditMiddle] = useState("");
+  const [editLast, setEditLast] = useState("");
   const [editCourses, setEditCourses] = useState<number[]>([]);
   const [enrollmentsLoaded, setEnrollmentsLoaded] = useState(false);
   const queryClient = useQueryClient();
@@ -46,7 +38,7 @@ export default function ManageStudents() {
   const { data: students = [], isLoading } = useQuery({
     queryKey: ["students"],
     queryFn: async () => {
-      const res = await fetch("/api/students?include_scores=true");
+      const res = await fetch("/api/students");
       if (!res.ok) throw new Error("Failed to fetch students");
       return parseStudents(await res.json());
     },
@@ -73,18 +65,49 @@ export default function ManageStudents() {
     enabled: editingId !== null,
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (studentId: number) => {
+      const res = await fetch(`/api/students/${studentId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete student");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["grades"] });
+      toast.success("Student deleted!");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: async ({
       studentId,
+      firstName,
+      middleName,
+      lastName,
       courseIds,
     }: {
       studentId: number;
+      firstName: string;
+      middleName: string;
+      lastName: string;
       courseIds: number[];
     }) => {
       const res = await fetch(`/api/students/${studentId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ course_ids: courseIds }),
+        body: JSON.stringify({
+          first_name: firstName,
+          middle_name: middleName,
+          last_name: lastName,
+          course_ids: courseIds,
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -95,8 +118,9 @@ export default function ManageStudents() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["grades"] });
       refetchEnrollments();
-      toast.success("Enrollments updated!");
+      toast.success("Student updated!");
       setEditingId(null);
     },
     onError: (err: Error) => {
@@ -104,8 +128,11 @@ export default function ManageStudents() {
     },
   });
 
-  const startEditing = (studentId: number) => {
-    setEditingId(studentId);
+  const startEditing = (student: Student) => {
+    setEditingId(student.student_id);
+    setEditFirst(student.first_name);
+    setEditMiddle(student.middle_name);
+    setEditLast(student.last_name);
     setEditCourses([]);
     setEnrollmentsLoaded(false);
   };
@@ -163,10 +190,13 @@ export default function ManageStudents() {
                         onClick={() =>
                           saveMutation.mutate({
                             studentId: student.student_id,
+                            firstName: editFirst.trim(),
+                            middleName: editMiddle.trim(),
+                            lastName: editLast.trim(),
                             courseIds: editCourses,
                           })
                         }
-                        disabled={saveMutation.isPending}
+                        disabled={saveMutation.isPending || !editFirst.trim() || !editLast.trim()}
                         className="px-4 py-1.5 bg-black text-white text-sm rounded-lg font-medium hover:bg-slate-700 transition cursor-pointer disabled:opacity-50"
                       >
                         {saveMutation.isPending ? "Saving..." : "Save"}
@@ -179,44 +209,89 @@ export default function ManageStudents() {
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => startEditing(student.student_id)}
-                      className="px-4 py-1.5 bg-slate-100 text-slate-700 text-sm rounded-lg font-medium hover:bg-slate-200 transition cursor-pointer"
-                    >
-                      Edit Courses
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => startEditing(student)}
+                        className="px-4 py-1.5 bg-slate-100 text-slate-700 text-sm rounded-lg font-medium hover:bg-slate-200 transition cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!window.confirm(`Delete ${student.first_name} ${student.last_name}? This will remove all their enrollments and grades.`)) return;
+                          deleteMutation.mutate(student.student_id);
+                        }}
+                        disabled={deleteMutation.isPending}
+                        className="px-4 py-1.5 bg-red-50 text-red-600 text-sm rounded-lg font-medium hover:bg-red-100 transition cursor-pointer disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
 
                 {editingId === student.student_id && (
-                  <div className="mt-4 pt-4 border-t border-slate-100">
-                    {courses.length === 0 ? (
-                      <p className="text-sm text-slate-400">
-                        No courses available.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {courses.map((course) => (
-                          <label
-                            key={course.course_id}
-                            className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={editCourses.includes(course.course_id)}
-                              onChange={() => toggleCourse(course.course_id)}
-                              className="w-4 h-4 accent-black"
-                            />
-                            <span className="text-sm text-slate-900">
-                              {course.course_name}
-                            </span>
-                          </label>
-                        ))}
+                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">First Name *</label>
+                        <input
+                          type="text"
+                          value={editFirst}
+                          onChange={(e) => setEditFirst(e.target.value)}
+                          className="w-full px-3 py-1.5 text-sm text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
+                        />
                       </div>
-                    )}
-                    <p className="text-xs text-slate-500 mt-2">
-                      {editCourses.length} course{editCourses.length !== 1 ? "s" : ""} selected
-                    </p>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Middle Name</label>
+                        <input
+                          type="text"
+                          value={editMiddle}
+                          onChange={(e) => setEditMiddle(e.target.value)}
+                          className="w-full px-3 py-1.5 text-sm text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Last Name *</label>
+                        <input
+                          type="text"
+                          value={editLast}
+                          onChange={(e) => setEditLast(e.target.value)}
+                          className="w-full px-3 py-1.5 text-sm text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-2">Enrolled Courses</label>
+                      {courses.length === 0 ? (
+                        <p className="text-sm text-slate-400">
+                          No courses available.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {courses.map((course) => (
+                            <label
+                              key={course.course_id}
+                              className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={editCourses.includes(course.course_id)}
+                                onChange={() => toggleCourse(course.course_id)}
+                                className="w-4 h-4 accent-black"
+                              />
+                              <span className="text-sm text-slate-900">
+                                {course.course_name}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-slate-500 mt-2">
+                        {editCourses.length} course{editCourses.length !== 1 ? "s" : ""} selected
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

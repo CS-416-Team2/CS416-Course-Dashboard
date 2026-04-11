@@ -3,33 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-toastify";
-
-interface Course {
-  course_id: number;
-  course_name: string;
-}
-
-interface Assignment {
-  assignment_id: number;
-  title: string;
-  max_points: number;
-}
-
-interface StudentGrade {
-  student_id: number;
-  first_name: string;
-  middle_name: string;
-  last_name: string;
-  score: number | null;
-  score_id: number | null;
-}
-
-interface UnenrolledStudent {
-  student_id: number;
-  first_name: string;
-  middle_name: string;
-  last_name: string;
-}
+import type { Course, Assignment, StudentGrade, Student } from "@/lib/schemas";
 
 export default function GradingPanel() {
   const [courseId, setCourseId] = useState("");
@@ -37,6 +11,9 @@ export default function GradingPanel() {
   const [scores, setScores] = useState<Record<number, string>>({});
   const [selectedToEnroll, setSelectedToEnroll] = useState<number[]>([]);
   const [showEnrollPanel, setShowEnrollPanel] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editMaxPts, setEditMaxPts] = useState("");
   const queryClient = useQueryClient();
 
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
@@ -78,7 +55,7 @@ export default function GradingPanel() {
     queryFn: async () => {
       const res = await fetch(`/api/courses/${courseId}/unenrolled`);
       if (!res.ok) throw new Error("Failed to fetch unenrolled students");
-      return res.json() as Promise<UnenrolledStudent[]>;
+      return res.json() as Promise<Student[]>;
     },
     enabled: !!courseId && showEnrollPanel,
     staleTime: 15 * 1000,
@@ -119,6 +96,49 @@ export default function GradingPanel() {
     },
   });
 
+  const deleteAssignmentMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/assignments/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete assignment");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["grades"] });
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      setAssignmentId("");
+      setScores({});
+      toast.success("Assignment deleted!");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const deleteGradeMutation = useMutation({
+    mutationFn: async (scoreId: number) => {
+      const res = await fetch(`/api/grades/${scoreId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete grade");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["grades"] });
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      toast.success("Grade removed!");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   const enrollMutation = useMutation({
     mutationFn: async (studentIds: number[]) => {
       const res = await fetch(`/api/courses/${courseId}/enroll`, {
@@ -143,6 +163,56 @@ export default function GradingPanel() {
       toast.error(err.message);
     },
   });
+
+  const updateAssignmentMutation = useMutation({
+    mutationFn: async ({ id, title, max_points }: { id: number; title: string; max_points: number }) => {
+      const res = await fetch(`/api/assignments/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, max_points }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to update assignment");
+      }
+      return res.json() as Promise<{ message: string; grades_cleared: boolean }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["grades"] });
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      setEditingAssignment(false);
+      setScores({});
+      toast.success(data.message);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const startEditingAssignment = () => {
+    if (!selectedAssignment) return;
+    setEditTitle(selectedAssignment.title);
+    setEditMaxPts(String(selectedAssignment.max_points));
+    setEditingAssignment(true);
+  };
+
+  const submitAssignmentEdit = () => {
+    if (!selectedAssignment || !editTitle.trim() || !editMaxPts) return;
+    const newMax = Number(editMaxPts);
+    if (newMax <= 0) { toast.error("Max points must be positive"); return; }
+
+    if (newMax !== selectedAssignment.max_points) {
+      if (!window.confirm("Changing max points will clear all existing grades for this assignment. Continue?")) return;
+    }
+
+    updateAssignmentMutation.mutate({
+      id: selectedAssignment.assignment_id,
+      title: editTitle.trim(),
+      max_points: newMax,
+    });
+  };
 
   const selectedAssignment = assignments.find(
     (a) => String(a.assignment_id) === assignmentId
@@ -228,27 +298,99 @@ export default function GradingPanel() {
           <label className="block text-sm font-medium text-black mb-2">
             Assignment *
           </label>
-          <select
-            value={assignmentId}
-            onChange={(e) => handleAssignmentChange(e.target.value)}
-            disabled={!courseId || assignmentsLoading}
-            className="w-full px-4 py-2 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none disabled:opacity-50"
-          >
-            <option value="">
-              {!courseId
-                ? "Select a course first"
-                : assignmentsLoading
-                ? "Loading..."
-                : assignments.length === 0
-                ? "No assignments yet"
-                : "Select an assignment"}
-            </option>
-            {assignments.map((a) => (
-              <option key={a.assignment_id} value={a.assignment_id}>
-                {a.title} ({a.max_points} pts)
+          <div className="flex gap-2">
+            <select
+              value={assignmentId}
+              onChange={(e) => { handleAssignmentChange(e.target.value); setEditingAssignment(false); }}
+              disabled={!courseId || assignmentsLoading}
+              className="flex-1 px-4 py-2 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none disabled:opacity-50"
+            >
+              <option value="">
+                {!courseId
+                  ? "Select a course first"
+                  : assignmentsLoading
+                  ? "Loading..."
+                  : assignments.length === 0
+                  ? "No assignments yet"
+                  : "Select an assignment"}
               </option>
-            ))}
-          </select>
+              {assignments.map((a) => (
+                <option key={a.assignment_id} value={a.assignment_id}>
+                  {a.title} ({a.max_points} pts)
+                </option>
+              ))}
+            </select>
+            {assignmentId && !editingAssignment && (
+              <>
+                <button
+                  onClick={startEditingAssignment}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg font-medium hover:bg-slate-200 transition cursor-pointer whitespace-nowrap"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    const a = assignments.find((x) => String(x.assignment_id) === assignmentId);
+                    if (!a || !window.confirm(`Delete "${a.title}"? All grades for this assignment will be removed.`)) return;
+                    deleteAssignmentMutation.mutate(a.assignment_id);
+                  }}
+                  disabled={deleteAssignmentMutation.isPending}
+                  className="px-4 py-2 bg-red-50 text-red-600 text-sm rounded-lg font-medium hover:bg-red-100 transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                >
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
+          {editingAssignment && (
+            <div className="mt-3 p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Title</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") submitAssignmentEdit(); if (e.key === "Escape") setEditingAssignment(false); }}
+                    maxLength={100}
+                    autoFocus
+                    className="w-full px-3 py-1.5 text-sm text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Max Points</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editMaxPts}
+                    onChange={(e) => setEditMaxPts(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") submitAssignmentEdit(); if (e.key === "Escape") setEditingAssignment(false); }}
+                    className="w-full px-3 py-1.5 text-sm text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none bg-white"
+                  />
+                </div>
+              </div>
+              {Number(editMaxPts) !== selectedAssignment?.max_points && Number(editMaxPts) > 0 && (
+                <p className="text-xs text-amber-600">
+                  Changing max points will clear all existing grades for this assignment.
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={submitAssignmentEdit}
+                  disabled={updateAssignmentMutation.isPending || !editTitle.trim() || !editMaxPts || Number(editMaxPts) <= 0}
+                  className="px-4 py-1.5 bg-black text-white text-sm rounded-lg font-medium hover:bg-slate-700 transition cursor-pointer disabled:opacity-50"
+                >
+                  {updateAssignmentMutation.isPending ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  onClick={() => setEditingAssignment(false)}
+                  className="px-4 py-1.5 bg-slate-100 text-slate-700 text-sm rounded-lg font-medium hover:bg-slate-200 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -369,15 +511,16 @@ export default function GradingPanel() {
                       <th className="text-left py-3 px-4 font-semibold text-slate-900">
                         New Score
                       </th>
+                      <th className="py-3 px-4"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map((s) => {
+                    {students.map((s, idx) => {
                       const currentScore = s.score;
                       const pendingVal = scores[s.student_id] ?? "";
                       return (
                         <tr
-                          key={s.student_id}
+                          key={`${s.student_id}-${s.score_id ?? idx}`}
                           className="border-b border-slate-100 hover:bg-slate-50"
                         >
                           <td className="py-3 px-4 text-slate-900 font-medium">
@@ -415,6 +558,20 @@ export default function GradingPanel() {
                               }
                               className="w-24 px-3 py-1.5 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none text-center placeholder:text-slate-400"
                             />
+                          </td>
+                          <td className="py-3 px-4">
+                            {s.score_id !== null && (
+                              <button
+                                onClick={() => {
+                                  if (!window.confirm(`Remove grade for ${s.first_name} ${s.last_name}?`)) return;
+                                  deleteGradeMutation.mutate(s.score_id!);
+                                }}
+                                disabled={deleteGradeMutation.isPending}
+                                className="px-3 py-1 bg-red-50 text-red-600 text-xs rounded-lg font-medium hover:bg-red-100 transition cursor-pointer disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );

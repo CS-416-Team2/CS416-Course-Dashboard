@@ -18,8 +18,9 @@ function validatePathSegments(pathSegments: string[]): boolean {
 }
 
 async function proxyToBackend(request: NextRequest, context: RouteContext) {
+  let sessionInfo;
   try {
-    await requireActiveSession();
+    sessionInfo = await requireActiveSession();
   } catch (error) {
     if (error instanceof UnauthorizedError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -39,6 +40,7 @@ async function proxyToBackend(request: NextRequest, context: RouteContext) {
   endpoint.search = request.nextUrl.search;
 
   const outboundHeaders = new Headers();
+  outboundHeaders.set("x-user-id", String(sessionInfo.userId));
   const incomingContentType = request.headers.get("content-type");
   if (incomingContentType) {
     outboundHeaders.set("content-type", incomingContentType);

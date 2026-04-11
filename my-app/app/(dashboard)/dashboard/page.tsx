@@ -5,11 +5,7 @@ import { useState } from 'react';
 import StatsOverview from '@/components/StatsOverview';
 import StudentsList from '@/components/StudentsList';
 import Link from 'next/link';
-
-interface Course {
-  course_id: number;
-  course_name: string;
-}
+import type { Course } from '@/lib/schemas';
 
 export default function Dashboard() {
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
