@@ -14,6 +14,7 @@ import { env } from "@/lib/env";
 const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
 const DUMMY_BCRYPT_HASH =
   "$2b$12$SbC38gGyGpsiyk/Qy9iLeOiYgdp5PUvz21iyMNoQdIVH8dH../TeW";
+const isProduction = process.env.NODE_ENV === "production";
 
 type AuthorizedUser = {
   id: string;
@@ -38,19 +39,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const startedAt = Date.now();
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) {
+          console.warn("[auth] credential schema validation failed:", parsed.error.flatten().fieldErrors);
           await timingSafeDelay(startedAt);
           return null;
         }
 
         const { email, password } = parsed.data;
-        const user = await findUserByEmail(email);
+
+        let user: Awaited<ReturnType<typeof findUserByEmail>>;
+        try {
+          user = await findUserByEmail(email);
+        } catch (err) {
+          console.error("[auth] DB lookup failed:", err);
+          await timingSafeDelay(startedAt);
+          return null;
+        }
+
         const passwordHash = user?.passwordHash ?? DUMMY_BCRYPT_HASH;
         const passwordValid = await bcrypt.compare(password, passwordHash);
 
-        // Prevent account enumeration by normalizing both timing and output.
         await timingSafeDelay(startedAt);
 
         if (!user || !passwordValid || !user.isActive) {
+          console.warn("[auth] login rejected:", { userFound: !!user, passwordValid, isActive: user?.isActive });
           return null;
         }
 
@@ -139,12 +150,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   cookies: {
     sessionToken: {
-      name: "__Secure-coursehub.session-token",
+      name: isProduction ? "__Secure-coursehub.session-token" : "coursehub.session-token",
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: true,
+        secure: isProduction,
       },
     },
   },

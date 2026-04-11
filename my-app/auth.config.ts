@@ -1,9 +1,13 @@
+import type { NextAuthConfig } from "next-auth";
+
 type AuthorizedCallbackArgs = {
   auth: { user?: unknown } | null;
   request: { nextUrl: URL };
 };
 
 const authConfig = {
+  // Keep middleware/edge config free of DB or Node-only dependencies.
+  providers: [],
   pages: {
     signIn: "/login",
   },
@@ -29,6 +33,6 @@ const authConfig = {
       return isAuthenticated;
     },
   },
-} as const;
+} satisfies NextAuthConfig;
 
 export default authConfig;

@@ -101,7 +101,7 @@ INSERT INTO users (user_id, email, password_hash, first_name, last_name, is_acti
 VALUES (
   1,
   'admin@school.edu',
-  '$2b$12$BfX4m84twCO.ZCLyVN.HTOOw7bxdnwbyF3IQOHXjIt.M7L9j66oYy',
+  '$2b$12$yfSwpRl7PUeXJLpCS6bbdeq2dbBl1Q/aEmD7b00nCHPUchSapNcD.',
   'Default',
   'Instructor',
   1,
