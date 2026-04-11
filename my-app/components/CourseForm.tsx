@@ -18,7 +18,7 @@ export default function CourseForm() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to add course");
+        throw new Error(errorData.error || "Failed to add course");
       }
 
       return response.json();
@@ -40,10 +40,10 @@ export default function CourseForm() {
 
   return (
     <div className="bg-white p-8 rounded-xl shadow-md border border-slate-200">
-      <h2 className="text-2xl font-semibold text-slate-900 mb-6">Add Course</h2>
+      <h2 className="text-2xl font-semibold text-black mb-6">Add Course</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-sm font-medium text-black mb-2">
             Course Name *
           </label>
           <input
@@ -53,13 +53,13 @@ export default function CourseForm() {
             placeholder="e.g. Introduction to Computer Science"
             required
             maxLength={100}
-            className="w-full px-4 py-2 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none placeholder:text-slate-400"
+            className="w-full px-4 py-2 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none placeholder:text-slate-400"
           />
         </div>
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-blue-400"
+          className="w-full px-4 cursor-pointer py-2 bg-black text-white rounded-lg font-semibold hover:bg-slate-200 hover:text-black transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {mutation.isPending ? "Adding..." : "Add Course"}
         </button>

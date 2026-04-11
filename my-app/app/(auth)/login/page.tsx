@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import Image from "next/image";
 import { toast } from "react-toastify";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const EMAIL_SAFE_REGEX =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
-export default function LoginPage() {
+function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -46,15 +51,24 @@ export default function LoginPage() {
       return;
     }
 
-    // TODO: Add your login API call here
-    console.log("Login attempt:", { cleanEmail, cleanPassword });
+    const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+    const result = await signIn("credentials", {
+      email: cleanEmail,
+      password: cleanPassword,
+      redirect: false,
+      callbackUrl,
+    });
 
-    // Simulated login success
-    setTimeout(() => {
-      setIsLoading(false);
-      // Redirect to dashboard on success
-      window.location.href = "/dashboard";
-    }, 1000);
+    setIsLoading(false);
+
+    if (!result || result.error) {
+      // Always show the same message to avoid account enumeration leaks.
+      toast.error("Invalid email or password");
+      return;
+    }
+
+    router.push(result.url ?? callbackUrl);
+    router.refresh();
   };
 
   return (
@@ -65,16 +79,28 @@ export default function LoginPage() {
           href="/"
           className="flex items-center gap-2 text-slate-600 hover:text-blue-600 transition-colors font-medium group"
         >
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
-            📚
-          </div>
+          <Image
+            src="/BookPNG.png"
+            alt="CourseHub"
+            width={40}
+            height={40}
+            className="w-10 h-10 rounded-lg object-contain"
+            priority
+          />
         </Link>
       </div>
       <div className="w-full max-w-md">
         {/* Logo and Header */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-xl mb-6 mx-auto">
-            <span className="text-3xl">📚</span>
+          <div className="inline-flex items-center justify-center mb-6 mx-auto">
+            <Image
+              src="/BookPNG.png"
+              alt="CourseHub"
+              width={64}
+              height={64}
+              className="w-16 h-16 rounded-xl object-contain"
+              priority
+            />
           </div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">CourseHub</h1>
           <p className="text-slate-600">Sign in to your account</p>
@@ -99,7 +125,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(sanitizeInput(e.target.value))}
                 placeholder="you@example.com"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
                 disabled={isLoading}
               />
             </div>
@@ -120,7 +146,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
                 disabled={isLoading}
               />
             </div>
@@ -129,7 +155,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2.5 cursor-pointer bg-black text-white font-semibold rounded-lg hover:bg-slate-200 hover:text-black transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </button>
@@ -142,5 +168,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

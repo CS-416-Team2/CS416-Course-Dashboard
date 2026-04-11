@@ -12,17 +12,40 @@ interface Student {
   average_score: number;
 }
 
+const safeNumber = (val: unknown): number =>
+  typeof val === "number" ? val : Number(val ?? 0) || 0;
+
+function parseStudentsPayload(json: unknown): Student[] {
+  const rows = Array.isArray(json)
+    ? json
+    : json && typeof json === 'object' && 'students' in json && Array.isArray((json as { students: unknown }).students)
+      ? (json as { students: unknown[] }).students
+      : [];
+
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    const score = r.average_score ?? r.score;
+    return {
+      student_id: Number(r.student_id),
+      first_name: String(r.first_name ?? ''),
+      last_name: String(r.last_name ?? ''),
+      average_score: safeNumber(score),
+    };
+  });
+}
+
 export default function StudentsList() {
   const [sortOrder, setSortOrder] = useState<'highest' | 'lowest'>('highest');
 
   const { data: students = [], isLoading, error } = useQuery({
     queryKey: ['students'],
-    queryFn: async () => {
+    queryFn: async (): Promise<Student[]> => {
       const response = await fetch('/api/students?include_scores=true', {
         next: { revalidate: 60 },
       });
       if (!response.ok) throw new Error('Failed to fetch students');
-      return response.json();
+      const json: unknown = await response.json();
+      return parseStudentsPayload(json);
     },
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
@@ -35,11 +58,9 @@ export default function StudentsList() {
   }, [error]);
 
   const sortedStudents = [...students].sort((a, b) => {
-    if (sortOrder === 'highest') {
-      return b.average_score - a.average_score;
-    } else {
-      return a.average_score - b.average_score;
-    }
+    const aScore = a.average_score ?? 0;
+    const bScore = b.average_score ?? 0;
+    return sortOrder === 'highest' ? bScore - aScore : aScore - bScore;
   });
 
   const getScoreColor = (score: number) => {
@@ -71,13 +92,13 @@ export default function StudentsList() {
       <div className="p-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-slate-900">Students</h2>
-          <div className="flex gap-3">
+          <div className="flex gap-3 ">
             <button
               onClick={() => setSortOrder('highest')}
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 sortOrder === 'highest'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-black text-white cursor-pointer'
+                  : 'bg-slate-100 text-slate-700 cursor-pointer hover:bg-slate-200'
               }`}
             >
               Highest Score
@@ -86,8 +107,8 @@ export default function StudentsList() {
               onClick={() => setSortOrder('lowest')}
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 sortOrder === 'lowest'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-black text-white cursor-pointer'
+                  : 'bg-slate-100 text-slate-700 cursor-pointer hover:bg-slate-200'
               }`}
             >
               Lowest Score
@@ -97,7 +118,7 @@ export default function StudentsList() {
 
         {isLoading ? (
           <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
             <p className="text-slate-600 mt-4">Loading students...</p>
           </div>
         ) : error ? (
@@ -108,8 +129,8 @@ export default function StudentsList() {
           <div className="text-center py-12">
             <p className="text-slate-600 mb-4">No students yet</p>
             <Link
-              href="/dashboard/students"
-              className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+              href="/students"
+              className="inline-block px-6 py-2 bg-black text-white rounded-lg font-semibold hover:bg-slate-200 hover:text-black transition"
             >
               Add Student
             </Link>
@@ -130,12 +151,12 @@ export default function StudentsList() {
                     <td className="py-4 px-4 text-slate-900 font-medium">
                       {student.first_name} {student.last_name}
                     </td>
-                    <td className={`py-4 px-4 font-semibold ${getScoreColor(student.average_score)}`}>
-                      {student.average_score.toFixed(2)}
+                    <td className={`py-4 px-4 font-semibold ${getScoreColor(student.average_score ?? 0)}`}>
+                      {(student.average_score ?? 0).toFixed(2)}
                     </td>
                     <td className="py-4 px-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getGradeBg(student.average_score)}`}>
-                        {getGrade(student.average_score)}
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getGradeBg(student.average_score ?? 0)}`}>
+                        {getGrade(student.average_score ?? 0)}
                       </span>
                     </td>
                   </tr>

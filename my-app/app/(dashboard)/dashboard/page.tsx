@@ -20,19 +20,19 @@ export default function Dashboard() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/courses"
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
+              className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-slate-200 hover:text-black transition"
             >
               + Add Course
             </Link>
             <Link
               href="/students"
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
+              className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-slate-200 hover:text-black transition"
             >
               + Add Student
             </Link>
             <Link
               href="/assignments"
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
+              className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-slate-200 hover:text-black transition"
             >
               + Add Assignment
             </Link>

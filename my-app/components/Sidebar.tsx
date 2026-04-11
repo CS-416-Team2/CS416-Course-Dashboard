@@ -44,7 +44,7 @@ export default function Sidebar() {
                 : 'text-black hover:bg-slate-100'
             }`}
           >
-            Add Student
+            Students
           </Link>
 
           <Link
@@ -56,6 +56,17 @@ export default function Sidebar() {
             }`}
           >
             Add Assignment
+          </Link>
+
+          <Link
+            href="/grading"
+            className={`block px-4 py-3 rounded-lg transition ${
+              isActive('/grading')
+                ? 'bg-slate-200 text-black'
+                : 'text-black hover:bg-slate-100'
+            }`}
+          >
+            Grading
           </Link>
         </nav>
       </div>

@@ -39,7 +39,8 @@ export default function AssignmentForm() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to add assignment");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to add assignment");
       }
 
       return response.json();
@@ -56,7 +57,7 @@ export default function AssignmentForm() {
     },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  function handleSubmit(e: React.SubmitEvent) {
     e.preventDefault();
     mutation.mutate({
       course_id: parseInt(courseId),
@@ -67,12 +68,12 @@ export default function AssignmentForm() {
 
   return (
     <div className="bg-white p-8 rounded-xl shadow-md border border-slate-200">
-      <h2 className="text-2xl font-semibold text-slate-900 mb-6">
+      <h2 className="text-2xl font-semibold text-black mb-6">
         Add Assignment
       </h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-sm font-medium text-black mb-2">
             Course *
           </label>
           <select
@@ -80,7 +81,7 @@ export default function AssignmentForm() {
             onChange={(e) => setCourseId(e.target.value)}
             required
             disabled={coursesLoading}
-            className="w-full px-4 py-2 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none placeholder:text-slate-400"
+            className="w-full px-4 py-2 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none placeholder:text-slate-400"
           >
             <option value="">
               {coursesLoading ? "Loading courses..." : "Select a course"}
@@ -94,7 +95,7 @@ export default function AssignmentForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-sm font-medium text-black mb-2">
             Assignment Title *
           </label>
           <input
@@ -104,12 +105,12 @@ export default function AssignmentForm() {
             placeholder="e.g. Midterm Exam"
             required
             maxLength={100}
-            className="w-full px-4 py-2 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none placeholder:text-slate-400"
+            className="w-full px-4 py-2 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none placeholder:text-slate-400"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-sm font-medium text-black mb-2">
             Max Points
           </label>
           <input
@@ -120,14 +121,14 @@ export default function AssignmentForm() {
             required
             min="1"
             max="999"
-            className="w-full px-4 py-2 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none placeholder:text-slate-400"
+            className="w-full px-4 py-2 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none placeholder:text-slate-400"
           />
         </div>
 
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-blue-400"
+          className="w-full px-4 cursor-pointer py-2 bg-black text-white rounded-lg font-semibold hover:bg-slate-200 hover:text-black transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {mutation.isPending ? "Adding..." : "Add Assignment"}
         </button>
