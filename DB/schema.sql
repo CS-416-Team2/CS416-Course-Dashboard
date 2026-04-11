@@ -83,16 +83,8 @@ CREATE TABLE IF NOT EXISTS assignment_grade (
     score DECIMAL(5, 2) NOT NULL,
     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
     FOREIGN KEY (assignment_id) REFERENCES assignments(assignment_id) ON DELETE CASCADE,
-    -- Logic constraint for the score range
-    CONSTRAINT chk_score_range CHECK (score >= 0 AND score <= 100)
+    CONSTRAINT chk_score_non_negative CHECK (score >= 0)
 );
-
--- Backfill auth columns for older databases that created users before auth upgrade.
-ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1,
-    ADD COLUMN IF NOT EXISTS session_version INT NOT NULL DEFAULT 1,
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
 
 -- Seed default instructor:
 -- Email: admin@school.edu

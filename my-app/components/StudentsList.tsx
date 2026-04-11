@@ -34,13 +34,14 @@ function parseStudentsPayload(json: unknown): Student[] {
   });
 }
 
-export default function StudentsList() {
+export default function StudentsList({ courseId }: { courseId?: number | null }) {
   const [sortOrder, setSortOrder] = useState<'highest' | 'lowest'>('highest');
 
+  const queryParam = courseId ? `&course_id=${courseId}` : '';
   const { data: students = [], isLoading, error } = useQuery({
-    queryKey: ['students'],
+    queryKey: ['students', courseId ?? 'all'],
     queryFn: async (): Promise<Student[]> => {
-      const response = await fetch('/api/students?include_scores=true', {
+      const response = await fetch(`/api/students?include_scores=true${queryParam}`, {
         next: { revalidate: 60 },
       });
       if (!response.ok) throw new Error('Failed to fetch students');

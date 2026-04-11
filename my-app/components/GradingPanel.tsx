@@ -144,8 +144,13 @@ export default function GradingPanel() {
     },
   });
 
+  const selectedAssignment = assignments.find(
+    (a) => String(a.assignment_id) === assignmentId
+  );
+  const maxPts = selectedAssignment?.max_points ?? 100;
+
   const handleScoreChange = (studentId: number, value: string) => {
-    if (value !== "" && (Number(value) < 0 || Number(value) > 100)) return;
+    if (value !== "" && (Number(value) < 0 || Number(value) > maxPts)) return;
     setScores((prev) => ({ ...prev, [studentId]: value }));
   };
 
@@ -170,21 +175,25 @@ export default function GradingPanel() {
     );
   };
 
+  const toPct = (score: number) => (maxPts > 0 ? (score / maxPts) * 100 : 0);
+
   const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-green-600";
-    if (score >= 80) return "text-blue-600";
-    if (score >= 70) return "text-yellow-600";
-    if (score >= 60) return "text-orange-600";
+    const pct = toPct(score);
+    if (pct >= 90) return "text-green-600";
+    if (pct >= 80) return "text-blue-600";
+    if (pct >= 70) return "text-yellow-600";
+    if (pct >= 60) return "text-orange-600";
     return "text-red-600";
   };
 
   const getGradeBadge = (score: number) => {
+    const pct = toPct(score);
     let letter = "F";
     let classes = "bg-red-100 text-red-700";
-    if (score >= 90) { letter = "A"; classes = "bg-green-100 text-green-700"; }
-    else if (score >= 80) { letter = "B"; classes = "bg-blue-100 text-blue-700"; }
-    else if (score >= 70) { letter = "C"; classes = "bg-yellow-100 text-yellow-700"; }
-    else if (score >= 60) { letter = "D"; classes = "bg-orange-100 text-orange-700"; }
+    if (pct >= 90) { letter = "A"; classes = "bg-green-100 text-green-700"; }
+    else if (pct >= 80) { letter = "B"; classes = "bg-blue-100 text-blue-700"; }
+    else if (pct >= 70) { letter = "C"; classes = "bg-yellow-100 text-yellow-700"; }
+    else if (pct >= 60) { letter = "D"; classes = "bg-orange-100 text-orange-700"; }
     return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${classes}`}>{letter}</span>;
   };
 
@@ -377,7 +386,7 @@ export default function GradingPanel() {
                           <td className="py-3 px-4">
                             {currentScore !== null ? (
                               <span className={`font-semibold ${getScoreColor(currentScore)}`}>
-                                {currentScore}
+                                {currentScore} <span className="text-slate-400 font-normal">/ {maxPts}</span>
                               </span>
                             ) : (
                               <span className="text-slate-400 italic">
@@ -394,7 +403,7 @@ export default function GradingPanel() {
                             <input
                               type="number"
                               min="0"
-                              max="100"
+                              max={maxPts}
                               value={pendingVal}
                               onChange={(e) =>
                                 handleScoreChange(s.student_id, e.target.value)
@@ -402,7 +411,7 @@ export default function GradingPanel() {
                               placeholder={
                                 currentScore !== null
                                   ? String(currentScore)
-                                  : "0–100"
+                                  : `0–${maxPts}`
                               }
                               className="w-24 px-3 py-1.5 text-black border border-slate-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none text-center placeholder:text-slate-400"
                             />

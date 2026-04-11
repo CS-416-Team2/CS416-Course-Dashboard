@@ -12,11 +12,12 @@ interface Stats {
   passingRate: number;
 }
 
-export default function StatsOverview() {
+export default function StatsOverview({ courseId }: { courseId?: number | null }) {
+  const queryParam = courseId ? `?course_id=${courseId}` : '';
   const { data: stats, isLoading, error } = useQuery({
-    queryKey: ['stats'],
+    queryKey: ['stats', courseId ?? 'all'],
     queryFn: async () => {
-      const response = await fetch('/api/stats', {
+      const response = await fetch(`/api/stats${queryParam}`, {
         next: { revalidate: 60 },
       });
       if (!response.ok) throw new Error('Failed to fetch stats');

@@ -40,6 +40,7 @@ function parseStudents(json: unknown): Student[] {
 export default function ManageStudents() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editCourses, setEditCourses] = useState<number[]>([]);
+  const [enrollmentsLoaded, setEnrollmentsLoaded] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: students = [], isLoading } = useQuery({
@@ -106,10 +107,7 @@ export default function ManageStudents() {
   const startEditing = (studentId: number) => {
     setEditingId(studentId);
     setEditCourses([]);
-  };
-
-  const handleEnrollmentsLoaded = (enrolled: Course[]) => {
-    setEditCourses(enrolled.map((c) => c.course_id));
+    setEnrollmentsLoaded(false);
   };
 
   const toggleCourse = (courseId: number) => {
@@ -120,15 +118,9 @@ export default function ManageStudents() {
     );
   };
 
-  const isEnrollmentsReady =
-    editingId !== null && enrollments !== undefined;
-
-  if (
-    isEnrollmentsReady &&
-    editCourses.length === 0 &&
-    enrollments.length > 0
-  ) {
-    handleEnrollmentsLoaded(enrollments);
+  if (editingId !== null && !enrollmentsLoaded && enrollments.length > 0) {
+    setEditCourses(enrollments.map((c) => c.course_id));
+    setEnrollmentsLoaded(true);
   }
 
   return (

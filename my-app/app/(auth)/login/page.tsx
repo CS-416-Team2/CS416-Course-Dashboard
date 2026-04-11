@@ -160,11 +160,22 @@ function LoginForm() {
               {isLoading ? "Signing in..." : "Sign In"}
             </button>
           </form>
+
+          {/* Register link */}
+          <p className="text-center text-sm text-slate-600 mt-6">
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/register"
+              className="font-semibold text-black hover:underline"
+            >
+              Create one
+            </Link>
+          </p>
         </div>
 
         {/* Footer */}
         <p className="text-center text-sm text-slate-600 mt-8">
-          © 2026 CourseHub. All rights reserved.
+          &copy; 2026 CourseHub. All rights reserved.
         </p>
       </div>
     </div>

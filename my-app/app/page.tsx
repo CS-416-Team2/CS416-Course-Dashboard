@@ -165,7 +165,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="bg-black text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p>&copy; 2026 CourseHub. Professional Course Management System.</p>
+          <p>&copy; 2026 CourseHub. Professional Course Management System. Made with ❤️ by Group 2 of CS 203</p>
         </div>
       </footer>
     </div>
