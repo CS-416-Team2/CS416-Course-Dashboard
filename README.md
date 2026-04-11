@@ -1,160 +1,307 @@
-# CS416-Course-Dashboard
+This repository serves as the workspace for Group Project 2 of the CS416 Software Engineering course at Purdue University Northwest.
 
-Course management dashboard for instructors — CS416 Software Engineering group project at Purdue.
+This project is a full-stack course management website designed for instructors. It includes a frontend, backend, and database system that work together to manage course information, student records, assignments, and scores.
 
-**Frontend:** Next.js &nbsp;|&nbsp; **Backend:** Python Flask &nbsp;|&nbsp; **Database:** MySQL &nbsp;|&nbsp; **Version Control:** GitHub ([branching strategy](git-branch-strategy.md))
-
----
-
-## Prerequisites
-
-| Tool | Minimum version | How to check |
-|------|----------------|--------------|
-| **Node.js** | 18+ | `node -v` |
-| **npm** | 9+ | `npm -v` |
-| **Python** | 3.10+ | `python --version` |
-| **MySQL** | 8.0+ | `mysql --version` |
+> This README will continue to be updated as the project progresses.
 
 ---
 
-## Quick Start
+## Project Overview
 
-### 1. Set up the database
+The goal of this project is to build a course management dashboard that allows instructors to manage course data efficiently through a web-based interface. The system supports storing, reading, updating, and displaying student and assignment information while also providing sorted views and average score calculations.
 
-Run the setup script (prompts for your MySQL password):
-
-```powershell
-cd DB
-.\setup.ps1
-```
-
-Or run the schema manually:
-
-```bash
-mysql -u root -p < DB/schema.sql
-```
-
-This creates the `school_db` database, all tables, and seeds a default instructor account.
-
-> **Default login:** `admin@school.edu` / `ChangeMe123!`
->
-> You can also create new accounts from the website at `/register` — no manual SQL needed.
-
-### 2. Configure the Flask backend
-
-Run the setup script (creates venv, installs deps, and prompts for DB config):
-
-```powershell
-cd Backend
-.\setup.ps1
-```
-
-Or set up manually:
-
-```bash
-cd Backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1       # Windows PowerShell
-pip install -r requirements.txt
-cp .env.example db-config.env      # then edit with your MySQL password
-```
-
-Start the server:
-
-```bash
-.\.venv\Scripts\python.exe app.py
-```
-
-Flask runs on **http://localhost:5000**.
-
-### 3. Configure the Next.js frontend
-
-```bash
-cd my-app
-
-# Create your .env from the example
-cp envExample.txt .env.local
-```
-
-Edit `.env.local`:
-
-```env
-# Generate a random secret (at least 32 characters). Example using OpenSSL:
-#   openssl rand -base64 48
-AUTH_SECRET=paste_your_random_secret_here
-
-AUTH_TRUST_HOST=true
-
-# Must match the database you created in step 1
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASS=your_mysql_password
-DB_NAME=school_db
-
-# Points to the Flask backend from step 2
-BACKEND_API_BASE_URL=http://127.0.0.1:5000
-```
-
-Install dependencies and start the dev server:
-
-```bash
-npm install
-npm run dev
-```
-
-Next.js runs on **http://localhost:3000**.
-
-### 4. Open the app
-
-1. Visit **http://localhost:3000**
-2. Click **Sign In** or **Create Account** to register a new instructor
-3. You're in the dashboard!
+The application uses a modern full-stack architecture:
+- **Frontend:** Next.js
+- **Backend:** Python Flask
+- **Database:** MySQL
+- **Container OS:** Ubuntu 24.04 (stable)
+- **Version Control:** GitHub
 
 ---
 
-## Project Structure
+## Business Scenario
 
-```
-CS416-Course-Dashboard/
-├── Backend/             # Flask API server
-│   ├── app.py           # All routes and DB setup
-│   ├── setup.ps1        # First-time setup script (venv + deps + config)
-│   ├── requirements.txt # Python dependencies
-│   ├── .env.example     # Template → copy to db-config.env
-│   └── db-config.env    # Your local MySQL creds (git-ignored)
-├── my-app/              # Next.js frontend
-│   ├── app/             # App Router pages and API routes
-│   ├── lib/             # DB pool, auth helpers, env validation
-│   ├── envExample.txt   # Template → copy to .env.local
-│   └── .env.local       # Your local env config (git-ignored)
-├── DB/
-│   ├── schema.sql       # Canonical database schema + seed data
-│   ├── setup.ps1        # Runs schema.sql against MySQL
-│   └── ERD.md           # Entity-relationship diagram (Mermaid)
-└── README.md            # ← You are here
-```
+Imagine each team as a software company. The customer asks the company to build a course management website for instructors, including frontend, backend, and database functionality.
+
+Each instructor should be able to create, read, update, and delete (CRUD) the data they input for each of their courses. The most important operations for this project are **create** and **read**, but the system is designed to support a broader course management workflow.
+
+Each course includes assignment submissions containing the following data:
+
+- Student first name
+- Student middle name
+- Student last name
+- Student ID
+- Assignment name
+- Assignment score
+
+Each unique assignment is displayed on a course page, and each submission for that assignment is displayed on the assignment page. Submission data should be sortable in ascending order, including by:
+- grade
+- student last name
+- student ID
 
 ---
 
 ## Business Requirements
 
-Each instructor should be able to create, read, update, and delete (CRUD) the data they input for each of their courses.
+The system should support the following:
 
-Each course has a list of assignment submissions containing:
-- Student first name, middle name, last name, and ID
-- Assignment name and score
+### Input Data
+- Student first name
+- Student middle name
+- Student last name
+- Student ID
+- Assignment name
+- Assignment score from **0 to 100**
 
-Assignments are displayed on the course page, with submissions sorted by grade.
+### Output Data
+- Display stored student and assignment data on the website
+- Sort data in ascending order
+- Calculate and display average scores
+- Show course-related statistics and summaries
+
+---
+
+## Core Functionality
+
+This project is designed to allow instructors to:
+
+- create courses
+- create assignments
+- add students
+- store student scores
+- enroll students in courses
+- display assignment submissions
+- sort student records
+- calculate average grades
+- view dashboard statistics
+
+The system connects the frontend to a Flask API, which communicates with a MySQL database for persistent storage.
 
 ---
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| `db-config.env is empty or missing` | Copy `Backend/.env.example` to `Backend/db-config.env` and fill in your MySQL password |
-| `Invalid server environment variables` | Make sure `my-app/.env.local` exists with all required keys (see step 3) |
-| `AUTH_SECRET must be at least 32 chars` | Generate a longer secret: `openssl rand -base64 48` |
-| Database name mismatch | Ensure `DB_NAME` in both config files matches the database you created (`school_db` by default) |
-| Flask can't connect to MySQL | Verify MySQL is running and the credentials in `db-config.env` are correct |
+**Frontend:** Next.js  
+
+**Backend:** Python Flask and Node.js (auth)
+
+**Database:** MySQL  
+
+**Docker Container OS:** Ubuntu 24.04 (stable)  
+
+**Version Control:** GitHub ([our branching strategy](git-branch-strategy.md))
+
+---
+
+## System Design
+
+The project follows a full-stack structure:
+
+- **Frontend:** User interface for instructors to access the dashboard and manage records
+- **Backend:** Flask REST API that handles business logic, validation, sorting, and database communication
+- **Database:** MySQL for storing students, assignments, grades, enrollments, and courses
+- **Deployment/Environment:** Docker running on Ubuntu for consistent development and testing
+
+---
+
+## Features
+
+Current and planned features include:
+
+- student record management
+- course creation and management
+- assignment creation
+- grade entry and bulk grade import
+- course enrollments
+- sorted reporting
+- average score calculations
+- dashboard statistics
+- database-backed data storage
+- full-stack integration across frontend, backend, and database
+
+---
+
+## Sorting and Reporting
+
+One important requirement of this project is displaying assignment submissions and student data in sorted order.
+
+The dashboard supports ascending sorting and reporting based on values such as:
+- score
+- student last name
+- student ID
+
+The backend also calculates average scores to help instructors quickly review class performance.
+
+---
+
+## Tech Stack Implementation
+
+### Frontend
+The frontend is built with **Next.js** and provides the user-facing dashboard interface.
+
+### Backend
+The backend is built with **Python Flask** and exposes API endpoints for:
+- students
+- courses
+- assignments
+- grades
+- statistics
+- average score calculations
+
+### Database
+The project uses **MySQL** to store:
+- student information
+- course information
+- assignment records
+- grades
+- enrollments
+
+### Containerization
+The project environment is designed to support **Docker** using **Ubuntu 24.04 stable**.
+
+---
+
+## Development Environment
+
+To support the project requirements, the development environment includes:
+
+- Ubuntu 24.04.1
+- Docker
+- GitHub
+- MySQL
+- Python
+- Node.js
+
+Stable versions should always be used instead of beta versions.
+
+---
+
+## Installation and Setup
+
+### Backend Setup
+
+1. Clone the repository:
+```bash
+git clone <your-repository-url>
+cd CS416-Course-Dashboard
+```
+
+2. Create a Python virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3. Install dependencies:
+```bash
+pip install flask flask-cors mysql-connector-python python-dotenv
+```
+
+4. Create your database configuration file:
+```bash
+cp .env.example db-config.env
+```
+
+5. Add your MySQL credentials to `db-config.env`:
+```env
+DB_HOST=localhost
+DB_USER=your_username
+DB_PASS=your_password
+DB_NAME=your_database_name
+```
+
+6. Run the backend server:
+```bash
+python app.py
+```
+
+The backend runs on:
+```bash
+http://localhost:5000
+```
+
+### Frontend Setup
+
+1. Navigate to the frontend folder:
+```bash
+cd frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+The frontend runs on:
+```bash
+http://localhost:3000
+```
+
+---
+
+## Project Collaboration
+
+This project is developed as a team using GitHub and Docker.
+
+Team members are expected to:
+- contribute code
+- commit and push updates
+- pull changes from teammates
+- collaborate using branches
+- document progress with screenshots
+- demonstrate Docker and GitHub collaboration
+
+---
+
+## Assignment Alignment
+
+This project supports the CS416 course project requirements by demonstrating:
+
+- frontend and backend development
+- database integration
+- sorting algorithms
+- Docker usage
+- GitHub collaboration
+- team contribution workflow
+- project reporting and presentation
+
+---
+
+## Future Improvements
+
+Possible improvements include:
+
+- stronger validation for student IDs
+- improved sorting options in the UI
+- better analytics and visual reporting
+- authentication for instructors
+- cleaner course and assignment management pages
+- deployment with Docker Compose
+
+---
+
+## Notes
+
+- Use stable software versions only
+- Ensure MySQL is running before starting the backend
+- Confirm environment variables are configured properly
+- Update this README as the project continues to evolve
+
+---
+
+## Authors
+
+Developed by **CS416 Team 2**  
+Purdue University Northwest  
+CS416 Software Engineering
+
+---
+
+## License
+
+This project was created for educational purposes as part of a university course project.
