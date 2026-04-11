@@ -519,37 +519,36 @@ def get_sorted_students():
         elif assignment_id:
             query = """
                 SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
-                       ag.score, a.max_points
+                       ag.score, a.max_points, a.assignment_id, a.title AS assignment_title
                 FROM students s
                 JOIN assignment_grade ag ON s.student_id = ag.student_id
                 JOIN assignments a ON ag.assignment_id = a.assignment_id
                 WHERE ag.assignment_id = %s
             """
             cursor.execute(query, (assignment_id,))
+            students_data = clean(cursor.fetchall())
+            sorted_data = bubble_sort_students_by_score(students_data)
+
+            total_score = sum(float(s['score']) for s in students_data)
+            total_possible = sum(float(s['max_points']) for s in students_data)
+            avg = round(total_score / total_possible * 100, 2) if total_possible > 0 else 0
+
+            return jsonify({
+                "students": sorted_data,
+                "average": avg,
+                "count": len(sorted_data)
+            }), 200
+
         else:
             query = """
-                SELECT s.student_id, s.first_name, s.middle_name, s.last_name,
-                       ag.score, a.max_points
+                SELECT s.student_id, s.first_name, s.middle_name, s.last_name
                 FROM students s
-                JOIN assignment_grade ag ON s.student_id = ag.student_id
-                JOIN assignments a ON ag.assignment_id = a.assignment_id
+                ORDER BY s.last_name, s.first_name
             """
             cursor.execute(query)
+            students_data = cursor.fetchall()
 
-        students_data = cursor.fetchall()
-        students_data = clean(students_data)
-
-        sorted_data = bubble_sort_students_by_score(students_data)
-
-        total_score = sum(float(s['score']) for s in students_data)
-        total_possible = sum(float(s['max_points']) for s in students_data)
-        avg = round(total_score / total_possible * 100, 2) if total_possible > 0 else 0
-
-        return jsonify({
-            "students": sorted_data,
-            "average": avg,
-            "count": len(sorted_data)
-        }), 200
+            return jsonify(students_data), 200
 
     except mysql.connector.Error as err:
         return jsonify({"error": str(err)}), 500
