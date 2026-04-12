@@ -1,0 +1,12 @@
+AUTH_SECRET=replace_with_a_random_64_plus_character_secret
+AUTH_TRUST_HOST=true
+
+# Next.js server-side DB connection (never expose with NEXT_PUBLIC_)
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASS=your_mysql_password
+DB_NAME=school_db
+
+# Flask backend origin used by the protected API proxy route.
+BACKEND_API_BASE_URL=http://127.0.0.1:5000

@@ -1,0 +1,48 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: mysql_db
+    restart: always 
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./DB/schema.sql:/docker-entrypoint-initdb.d/init.sql # replace ./init.sql with the path for the .SQL file
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_PASS}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  flask-api:
+    build: ./Backend
+    container_name: flask_api
+    restart: always
+    env_file:
+      - ./Backend/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://${DB_USER}:${DB_PASS}@db:${DB_PORT}/${DB_NAME}
+      FLASK_ENV: production
+      PYTHONUNBUFFERED: 1 # Allows you to see logs in real-time via 'docker logs'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  nextjs-frontend:
+    build: ./Frontend
+    container_name: nextjs_ui
+    restart: always
+    env_file:
+      - ./Frontend/.env
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_API_BASE_URL: ${BACKEND_API_BASE_URL}
+    depends_on:
+      - db
+      - flask-api
+
+volumes:
+  mysql_data: # This creates a managed volume that survives 'docker-compose down'
