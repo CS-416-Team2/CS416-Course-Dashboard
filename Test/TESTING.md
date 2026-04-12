@@ -3,11 +3,11 @@
 ## Overview
 
 Comprehensive unit tests for the Grade Tracker Flask application covering:
-- ✅ Helper functions (`clean()`, `bubble_sort_students_by_score()`)
-- ✅ All API endpoints (Courses, Assignments, Students, Enrollments, Grades, Stats)
-- ✅ Input validation and error handling
-- ✅ Edge cases and boundary conditions
-- ✅ Database error scenarios
+- Helper functions (`clean()`, `bubble_sort_students_by_score()`)
+- All API endpoints (Courses, Assignments, Students, Enrollments, Grades, Stats)
+- Input validation and error handling
+- Edge cases and boundary conditions
+- Database error scenarios
 
 **Total: 62 test cases**
 
@@ -184,31 +184,31 @@ def test_save_grade_invalid_score_too_high(self, client, mock_db):
 
 ## What's Tested
 
-### ✅ Functionality Tests
+### Functionality Tests
 - All CRUD operations
 - Query filtering
 - Bulk operations
 - Data aggregation (averages, counts)
 - Sorting algorithms
 
-### ✅ Validation Tests
+### Validation Tests
 - Required field validation
 - Score range validation (0-100)
 - Data type validation
 - Empty input handling
 
-### ✅ Error Handling Tests
+### Error Handling Tests
 - Database connection errors
 - Missing required parameters
 - Invalid data types
 - Boundary value errors
 
-### ✅ Data Transformation Tests
+### Data Transformation Tests
 - Decimal to float conversion
 - JSON serialization
 - Data cleaning
 
-### ✅ Edge Cases
+### Edge Cases
 - Empty results
 - Null values
 - Special characters
