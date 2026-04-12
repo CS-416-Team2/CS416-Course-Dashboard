@@ -8,7 +8,7 @@ import os
 import sys
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://bejimbus.com"])
 
 # --- DATABASE CONNECTION POOL ---
 db_pool = None
@@ -1746,7 +1746,6 @@ def csv_commit():
         cursor.close()
 
 
-if __name__ == '__main__':
-    init_pool()
-    seed_default_user()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+init_pool()
+seed_default_user()
