@@ -1,0 +1,14 @@
+student_id,first_name,middle_name,last_name,course_name,assignment_title,max_points,score
+1001,Alice,,Smith,CS416,Homework 1,100,92
+1002,Bob,J,Jones,CS416,Homework 1,100,85
+1003,Carol,Anne,Davis,CS416,Homework 1,100,78
+1004,Dan,,Wilson,CS416,Homework 1,100,91
+1005,Eve,Marie,Taylor,CS416,Homework 1,100,88
+1001,Alice,,Smith,CS416,Midterm Exam,200,175
+1002,Bob,J,Jones,CS416,Midterm Exam,200,160
+1003,Carol,Anne,Davis,CS416,Midterm Exam,200,182
+1004,Dan,,Wilson,CS416,Midterm Exam,200,195
+1005,Eve,Marie,Taylor,CS416,Midterm Exam,200,170
+1001,Alice,,Smith,CS101,Quiz 1,50,45
+1002,Bob,J,Jones,CS101,Quiz 1,50,42
+1004,Dan,,Wilson,CS101,Quiz 1,50,38

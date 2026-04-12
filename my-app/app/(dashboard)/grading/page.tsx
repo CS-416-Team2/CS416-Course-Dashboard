@@ -27,10 +27,12 @@ export default function GradingPage() {
           </div>
           <ul className="text-sm text-black space-y-2">
             <li>• Select a course first, then pick an assignment to grade</li>
-            <li>• Enter scores (0–100) for each student, then click Save</li>
+            <li>• Enter scores for each student, then click Save</li>
             <li>• Existing scores can be overwritten by entering a new value</li>
             <li>• Students must be enrolled in the course to appear here</li>
-            <li>• Use the CSV import to bulk-import grades from a file</li>
+            <li>• Use the Bulk CSV Import to add students, enrollments, and grades at once</li>
+            <li>• CSV columns are all optional: <code className="bg-white px-1 py-0.5 rounded text-xs">student_id, first_name, middle_name, last_name, score, course_id, assignment_id</code></li>
+            <li>• Leave columns empty to skip them — e.g. upload just student names without scores</li>
           </ul>
         </div>
       </div>

@@ -2,7 +2,6 @@
 .SYNOPSIS
     First-time database setup.
     Connects to MySQL and runs schema.sql to create the database, tables, and seed data.
-    Optionally runs migrate-add-auth-columns.sql for legacy databases.
 .USAGE
     cd DB
     .\setup.ps1
@@ -24,7 +23,6 @@ if (-not $mysqlPath) {
 # Check schema file
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $schemaFile = Join-Path $scriptDir "schema.sql"
-$migrationFile = Join-Path $scriptDir "migrate-add-auth-columns.sql"
 
 if (-not (Test-Path $schemaFile)) {
     Write-Host "ERROR: schema.sql not found at $schemaFile" -ForegroundColor Red
@@ -51,21 +49,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "  schema.sql applied successfully." -ForegroundColor Green
-
-# --- Offer migration for legacy databases ---
-if (Test-Path $migrationFile) {
-    Write-Host ""
-    $runMigration = Read-Host "  Run auth-column migration for a legacy database? (y/N)"
-    if ($runMigration -eq "y" -or $runMigration -eq "Y") {
-        Write-Host "  Running migrate-add-auth-columns.sql..." -ForegroundColor Yellow
-        Get-Content $migrationFile | mysql -u $dbUser -p -h $dbHost school_db 2>&1 | ForEach-Object {
-            if ($_ -match "Duplicate column") {
-                Write-Host "  Columns already exist — skipping." -ForegroundColor Green
-            }
-        }
-        Write-Host "  Migration complete." -ForegroundColor Green
-    }
-}
 
 Write-Host "`n=== Database ready! ===" -ForegroundColor Cyan
 Write-Host "  Database:  school_db" -ForegroundColor White

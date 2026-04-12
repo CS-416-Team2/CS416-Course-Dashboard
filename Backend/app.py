@@ -1255,6 +1255,497 @@ def get_average():
         cursor.close()
 
 
+# ==================== CSV BULK IMPORT ====================
+
+def _resolve_row_fields(r):
+    """Extract and normalise the fields from a single CSV row dict."""
+    sid   = int(r["student_id"])   if r.get("student_id")   is not None else None
+    fname = (r.get("first_name") or "").strip()
+    mname = (r.get("middle_name") or "").strip()
+    lname = (r.get("last_name") or "").strip()
+    cid   = int(r["course_id"])    if r.get("course_id")    is not None else None
+    cname = (r.get("course_name") or "").strip()
+    aid   = int(r["assignment_id"])if r.get("assignment_id")is not None else None
+    atitle= (r.get("assignment_title") or "").strip()
+    max_p = r.get("max_points")
+    max_pts = int(max_p) if max_p is not None else 100
+    raw_score = r.get("score")
+    score = None
+    if raw_score is not None:
+        score = float(raw_score)
+    return sid, fname, mname, lname, cid, cname, aid, atitle, max_pts, score
+
+
+@app.route('/api/csv/preview', methods=['POST'])
+def csv_preview():
+    """Analyse CSV rows and return a categorised preview of all changes."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    rows = data.get("rows", [])
+    if not rows:
+        return jsonify({"error": "No data rows provided"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # ---- Phase 1: resolve courses ----
+        explicit_cids = {int(r["course_id"]) for r in rows if r.get("course_id") is not None}
+        existing_courses = {}
+        if explicit_cids:
+            fmt = ','.join(['%s'] * len(explicit_cids))
+            cursor.execute(
+                f"SELECT course_id, course_name FROM courses WHERE course_id IN ({fmt}) AND instructor_id = %s",
+                tuple(explicit_cids) + (user_id,))
+            for c in cursor.fetchall():
+                existing_courses[c['course_id']] = c
+
+        course_names = {r["course_name"].strip() for r in rows
+                        if r.get("course_id") is None and r.get("course_name")}
+        courses_by_name = {}
+        if course_names:
+            fmt = ','.join(['%s'] * len(course_names))
+            cursor.execute(
+                f"SELECT course_id, course_name FROM courses WHERE course_name IN ({fmt}) AND instructor_id = %s",
+                tuple(course_names) + (user_id,))
+            for c in cursor.fetchall():
+                courses_by_name[c['course_name']] = c
+                existing_courses[c['course_id']] = c
+
+        new_course_names = sorted(course_names - set(courses_by_name.keys()))
+        new_courses_list = [{"course_name": n} for n in new_course_names]
+
+        def resolve_course(cid, cname):
+            if cid is not None:
+                if cid in existing_courses:
+                    return cid, existing_courses[cid]['course_name'], False
+                return None, None, False
+            if cname:
+                if cname in courses_by_name:
+                    c = courses_by_name[cname]
+                    return c['course_id'], cname, False
+                return None, cname, True
+            return None, None, False
+
+        # ---- Phase 2: resolve assignments ----
+        explicit_aids = {int(r["assignment_id"]) for r in rows if r.get("assignment_id") is not None}
+        existing_assignments = {}
+        if explicit_aids:
+            fmt = ','.join(['%s'] * len(explicit_aids))
+            cursor.execute(
+                f"""SELECT a.assignment_id, a.title, a.max_points, a.course_id
+                    FROM assignments a JOIN courses c ON a.course_id = c.course_id
+                    WHERE a.assignment_id IN ({fmt}) AND c.instructor_id = %s""",
+                tuple(explicit_aids) + (user_id,))
+            for a in cursor.fetchall():
+                existing_assignments[a['assignment_id']] = a
+
+        assignments_by_title = {}
+        for r in rows:
+            if r.get("assignment_id") is not None or not r.get("assignment_title"):
+                continue
+            cid_r = int(r["course_id"]) if r.get("course_id") is not None else None
+            cname_r = (r.get("course_name") or "").strip()
+            res_cid, _, is_new = resolve_course(cid_r, cname_r)
+            if res_cid is not None and not is_new:
+                title = r["assignment_title"].strip()
+                if (res_cid, title) not in assignments_by_title:
+                    cursor.execute(
+                        "SELECT assignment_id, title, max_points, course_id FROM assignments WHERE course_id = %s AND title = %s",
+                        (res_cid, title))
+                    row = cursor.fetchone()
+                    if row:
+                        assignments_by_title[(res_cid, title)] = row
+                        existing_assignments[row['assignment_id']] = row
+                    else:
+                        assignments_by_title[(res_cid, title)] = None
+
+        new_assignments_map = {}
+        for r in rows:
+            if r.get("assignment_id") is not None or not r.get("assignment_title"):
+                continue
+            cid_r = int(r["course_id"]) if r.get("course_id") is not None else None
+            cname_r = (r.get("course_name") or "").strip()
+            res_cid, res_cname, is_new_course = resolve_course(cid_r, cname_r)
+            title = r["assignment_title"].strip()
+            mp = int(r["max_points"]) if r.get("max_points") is not None else 100
+            display_course = res_cname or str(res_cid or "")
+            if is_new_course:
+                key = (cname_r, title)
+                if key not in new_assignments_map:
+                    new_assignments_map[key] = {"title": title, "max_points": mp, "course_name": display_course}
+            elif res_cid is not None:
+                if (res_cid, title) in assignments_by_title and assignments_by_title[(res_cid, title)] is not None:
+                    pass
+                else:
+                    key = (display_course, title)
+                    if key not in new_assignments_map:
+                        new_assignments_map[key] = {"title": title, "max_points": mp, "course_name": display_course}
+        new_assignments_list = list(new_assignments_map.values())
+
+        def resolve_assignment(aid, atitle, max_pts, res_cid, res_cname, is_new_course):
+            if aid is not None:
+                if aid in existing_assignments:
+                    a = existing_assignments[aid]
+                    return aid, a['title'], float(a['max_points']), False
+                return None, None, 100, False
+            if atitle:
+                if not is_new_course and res_cid is not None:
+                    cached = assignments_by_title.get((res_cid, atitle))
+                    if cached:
+                        return cached['assignment_id'], atitle, float(cached['max_points']), False
+                return None, atitle, max_pts, True
+            return None, None, 100, False
+
+        # ---- Phase 3: existing students, enrollments, grades ----
+        student_ids = {int(r["student_id"]) for r in rows if r.get("student_id") is not None}
+        existing_students = {}
+        if student_ids:
+            fmt = ','.join(['%s'] * len(student_ids))
+            cursor.execute(
+                f"SELECT student_id, first_name, middle_name, last_name FROM students WHERE student_id IN ({fmt})",
+                tuple(student_ids))
+            for s in cursor.fetchall():
+                existing_students[s['student_id']] = s
+
+        all_known_cids = set(existing_courses.keys())
+        existing_enrollments = set()
+        if student_ids and all_known_cids:
+            fmt_s = ','.join(['%s'] * len(student_ids))
+            fmt_c = ','.join(['%s'] * len(all_known_cids))
+            cursor.execute(
+                f"SELECT student_id, course_id FROM enrollments WHERE student_id IN ({fmt_s}) AND course_id IN ({fmt_c})",
+                tuple(student_ids) + tuple(all_known_cids))
+            for e in cursor.fetchall():
+                existing_enrollments.add((e['student_id'], e['course_id']))
+
+        all_known_aids = set(existing_assignments.keys())
+        existing_grades = {}
+        if student_ids and all_known_aids:
+            fmt_s = ','.join(['%s'] * len(student_ids))
+            fmt_a = ','.join(['%s'] * len(all_known_aids))
+            cursor.execute(
+                f"SELECT student_id, assignment_id, score FROM assignment_grade WHERE student_id IN ({fmt_s}) AND assignment_id IN ({fmt_a})",
+                tuple(student_ids) + tuple(all_known_aids))
+            for gr in cursor.fetchall():
+                existing_grades[(gr['student_id'], gr['assignment_id'])] = float(gr['score'])
+
+        # ---- Phase 4: categorise per-row changes ----
+        new_students = []
+        updated_students = []
+        new_enrollments = []
+        new_grades = []
+        updated_grades = []
+        errors = []
+        seen_sids = set()
+        seen_enrollments = set()
+
+        for i, r in enumerate(rows):
+            row_num = i + 1
+            try:
+                sid, fname, mname, lname, cid, cname, aid, atitle, max_pts, score = _resolve_row_fields(r)
+            except (ValueError, TypeError):
+                errors.append({"row": row_num, "message": "Invalid numeric value"})
+                continue
+
+            has_name = bool(fname and lname)
+            if sid is None and not has_name:
+                continue
+
+            res_cid, res_cname, is_new_course = resolve_course(cid, cname)
+            res_aid, res_atitle, res_max, is_new_assign = resolve_assignment(
+                aid, atitle, max_pts, res_cid, res_cname, is_new_course)
+
+            if cid is not None and cid not in existing_courses:
+                errors.append({"row": row_num, "message": f"Course {cid} not found or you don't own it"})
+                continue
+            if aid is not None and aid not in existing_assignments:
+                errors.append({"row": row_num, "message": f"Assignment {aid} not found or not in your courses"})
+                continue
+
+            if sid is not None and sid not in seen_sids:
+                seen_sids.add(sid)
+                if sid in existing_students:
+                    es = existing_students[sid]
+                    if has_name:
+                        old_m = es.get('middle_name') or ''
+                        if es['first_name'] != fname or old_m != mname or es['last_name'] != lname:
+                            updated_students.append({
+                                "student_id": sid,
+                                "old_first_name": es['first_name'], "old_middle_name": old_m, "old_last_name": es['last_name'],
+                                "new_first_name": fname, "new_middle_name": mname, "new_last_name": lname,
+                            })
+                else:
+                    if has_name:
+                        new_students.append({"student_id": sid, "first_name": fname, "middle_name": mname, "last_name": lname})
+                    else:
+                        errors.append({"row": row_num, "message": f"Student {sid} does not exist and no name provided"})
+                        continue
+            elif sid is None and has_name:
+                new_students.append({"student_id": None, "first_name": fname, "middle_name": mname, "last_name": lname, "auto_id": True})
+
+            student_name = f"{fname} {lname}".strip() if has_name else ""
+            if not student_name and sid and sid in existing_students:
+                es = existing_students[sid]
+                student_name = f"{es['first_name']} {es['last_name']}"
+
+            display_course = res_cname or ""
+            if (res_cid is not None or is_new_course) and display_course:
+                enroll_key = (sid, res_cid if res_cid else cname)
+                if enroll_key not in seen_enrollments:
+                    seen_enrollments.add(enroll_key)
+                    is_already_enrolled = (not is_new_course and sid is not None
+                                          and res_cid is not None
+                                          and (sid, res_cid) in existing_enrollments)
+                    if not is_already_enrolled:
+                        sn = student_name or (f"Student {sid}" if sid else f"{fname} {lname} (new)")
+                        new_enrollments.append({
+                            "student_id": sid, "student_name": sn,
+                            "course_id": res_cid, "course_name": display_course,
+                        })
+
+            if (res_aid is not None or is_new_assign) and score is not None:
+                if score < 0:
+                    errors.append({"row": row_num, "message": "Score cannot be negative"})
+                    continue
+                a_display = res_atitle or str(aid)
+                if is_new_assign:
+                    sn = student_name or (f"Student {sid}" if sid else f"{fname} {lname} (new)")
+                    new_grades.append({"student_id": sid, "student_name": sn,
+                                       "assignment_id": None, "assignment_title": a_display,
+                                       "score": score, "max_points": res_max})
+                elif sid is not None and res_aid is not None:
+                    key = (sid, res_aid)
+                    if key in existing_grades:
+                        old_score = existing_grades[key]
+                        if old_score != score:
+                            updated_grades.append({
+                                "student_id": sid, "student_name": student_name or f"Student {sid}",
+                                "assignment_id": res_aid, "assignment_title": a_display,
+                                "old_score": old_score, "new_score": score, "max_points": res_max,
+                            })
+                    else:
+                        new_grades.append({
+                            "student_id": sid, "student_name": student_name or f"Student {sid}",
+                            "assignment_id": res_aid, "assignment_title": a_display,
+                            "score": score, "max_points": res_max,
+                        })
+                else:
+                    sn = f"{fname} {lname} (new)" if not sid else student_name
+                    new_grades.append({"student_id": sid, "student_name": sn,
+                                       "assignment_id": res_aid, "assignment_title": a_display,
+                                       "score": score, "max_points": res_max})
+
+        return jsonify(clean({
+            "new_courses": new_courses_list,
+            "new_assignments": new_assignments_list,
+            "new_students": new_students,
+            "updated_students": updated_students,
+            "new_enrollments": new_enrollments,
+            "new_grades": new_grades,
+            "updated_grades": updated_grades,
+            "errors": errors,
+            "summary": {
+                "new_courses": len(new_courses_list),
+                "new_assignments": len(new_assignments_list),
+                "new_students": len(new_students),
+                "updated_students": len(updated_students),
+                "new_enrollments": len(new_enrollments),
+                "new_grades": len(new_grades),
+                "updated_grades": len(updated_grades),
+                "errors": len(errors),
+            }
+        })), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
+@app.route('/api/csv/commit', methods=['POST'])
+def csv_commit():
+    """Execute the CSV import — create courses/assignments, upsert students, enrollments, grades."""
+    user_id = require_user()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    rows = data.get("rows", [])
+    if not rows:
+        return jsonify({"error": "No data rows provided"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        counts = {
+            "courses_added": 0, "assignments_added": 0,
+            "students_added": 0, "students_updated": 0,
+            "enrollments_added": 0,
+            "grades_added": 0, "grades_updated": 0,
+            "rows_skipped": 0,
+        }
+
+        # ---- Phase 1: resolve / create courses ----
+        explicit_cids = {int(r["course_id"]) for r in rows if r.get("course_id") is not None}
+        owned_courses = set()
+        if explicit_cids:
+            fmt = ','.join(['%s'] * len(explicit_cids))
+            cursor.execute(
+                f"SELECT course_id FROM courses WHERE course_id IN ({fmt}) AND instructor_id = %s",
+                tuple(explicit_cids) + (user_id,))
+            owned_courses = {row['course_id'] for row in cursor.fetchall()}
+
+        unique_cnames = {r["course_name"].strip() for r in rows
+                         if r.get("course_id") is None and r.get("course_name")}
+        courses_by_name = {}
+        if unique_cnames:
+            fmt = ','.join(['%s'] * len(unique_cnames))
+            cursor.execute(
+                f"SELECT course_id, course_name FROM courses WHERE course_name IN ({fmt}) AND instructor_id = %s",
+                tuple(unique_cnames) + (user_id,))
+            for c in cursor.fetchall():
+                courses_by_name[c['course_name']] = c['course_id']
+                owned_courses.add(c['course_id'])
+        for name in unique_cnames:
+            if name not in courses_by_name:
+                cursor.execute("INSERT INTO courses (instructor_id, course_name) VALUES (%s, %s)", (user_id, name))
+                new_cid = cursor.lastrowid
+                courses_by_name[name] = new_cid
+                owned_courses.add(new_cid)
+                counts["courses_added"] += 1
+
+        # ---- Phase 2: resolve / create assignments ----
+        explicit_aids = {int(r["assignment_id"]) for r in rows if r.get("assignment_id") is not None}
+        owned_assignments = set()
+        if explicit_aids:
+            fmt = ','.join(['%s'] * len(explicit_aids))
+            cursor.execute(
+                f"""SELECT a.assignment_id FROM assignments a
+                    JOIN courses c ON a.course_id = c.course_id
+                    WHERE a.assignment_id IN ({fmt}) AND c.instructor_id = %s""",
+                tuple(explicit_aids) + (user_id,))
+            owned_assignments = {row['assignment_id'] for row in cursor.fetchall()}
+
+        assignments_by_key = {}
+        for r in rows:
+            if r.get("assignment_id") is not None or not r.get("assignment_title"):
+                continue
+            cid_r = int(r["course_id"]) if r.get("course_id") is not None else None
+            cname_r = (r.get("course_name") or "").strip()
+            res_cid = cid_r if cid_r in owned_courses else courses_by_name.get(cname_r)
+            if res_cid is None:
+                continue
+            title = r["assignment_title"].strip()
+            mp = int(r["max_points"]) if r.get("max_points") is not None else 100
+            key = (res_cid, title)
+            if key in assignments_by_key:
+                continue
+            cursor.execute(
+                "SELECT assignment_id FROM assignments WHERE course_id = %s AND title = %s",
+                (res_cid, title))
+            existing = cursor.fetchone()
+            if existing:
+                assignments_by_key[key] = existing['assignment_id']
+                owned_assignments.add(existing['assignment_id'])
+            else:
+                cursor.execute(
+                    "INSERT INTO assignments (course_id, title, max_points) VALUES (%s, %s, %s)",
+                    (res_cid, title, mp))
+                new_aid = cursor.lastrowid
+                assignments_by_key[key] = new_aid
+                owned_assignments.add(new_aid)
+                counts["assignments_added"] += 1
+
+        # ---- Phase 3: students, enrollments, grades ----
+        all_sids = {int(r["student_id"]) for r in rows if r.get("student_id") is not None}
+        known_sids = set()
+        if all_sids:
+            fmt = ','.join(['%s'] * len(all_sids))
+            cursor.execute(f"SELECT student_id FROM students WHERE student_id IN ({fmt})", tuple(all_sids))
+            known_sids = {row['student_id'] for row in cursor.fetchall()}
+
+        for r in rows:
+            try:
+                sid, fname, mname, lname, cid, cname, aid, atitle, max_pts, score = _resolve_row_fields(r)
+            except (ValueError, TypeError):
+                counts["rows_skipped"] += 1
+                continue
+
+            if score is not None and score < 0:
+                counts["rows_skipped"] += 1
+                continue
+
+            has_name = bool(fname and lname)
+            if sid is None and not has_name:
+                continue
+
+            if has_name:
+                if sid is not None:
+                    cursor.execute("""
+                        INSERT INTO students (student_id, first_name, middle_name, last_name, created_by)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            first_name = VALUES(first_name),
+                            middle_name = VALUES(middle_name),
+                            last_name = VALUES(last_name)
+                    """, (sid, fname, mname, lname, user_id))
+                    known_sids.add(sid)
+                    if cursor.rowcount == 1:
+                        counts["students_added"] += 1
+                    elif cursor.rowcount == 2:
+                        counts["students_updated"] += 1
+                else:
+                    cursor.execute(
+                        "INSERT INTO students (first_name, middle_name, last_name, created_by) VALUES (%s, %s, %s, %s)",
+                        (fname, mname, lname, user_id))
+                    sid = cursor.lastrowid
+                    known_sids.add(sid)
+                    counts["students_added"] += 1
+            elif sid is not None:
+                if sid not in known_sids:
+                    counts["rows_skipped"] += 1
+                    continue
+            else:
+                continue
+
+            res_cid = cid if cid in owned_courses else courses_by_name.get(cname)
+            if res_cid is not None:
+                cursor.execute(
+                    "INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (%s, %s)",
+                    (sid, res_cid))
+                if cursor.rowcount == 1:
+                    counts["enrollments_added"] += 1
+
+            res_aid = aid if aid in owned_assignments else None
+            if res_aid is None and atitle and res_cid is not None:
+                res_aid = assignments_by_key.get((res_cid, atitle))
+
+            if res_aid is not None and score is not None:
+                cursor.execute("""
+                    INSERT INTO assignment_grade (student_id, assignment_id, score)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE score = VALUES(score)
+                """, (sid, res_aid, score))
+                if cursor.rowcount == 1:
+                    counts["grades_added"] += 1
+                elif cursor.rowcount == 2:
+                    counts["grades_updated"] += 1
+
+        conn.commit()
+        return jsonify({"message": "Import completed", **counts}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+
+
 if __name__ == '__main__':
     init_pool()
     seed_default_user()
