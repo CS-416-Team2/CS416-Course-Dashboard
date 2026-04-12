@@ -4,18 +4,12 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
-
-interface Student {
-  student_id: number;
-  first_name: string;
-  last_name: string;
-  average_score: number;
-}
+import type { StudentWithScore } from '@/lib/schemas';
 
 const safeNumber = (val: unknown): number =>
   typeof val === "number" ? val : Number(val ?? 0) || 0;
 
-function parseStudentsPayload(json: unknown): Student[] {
+function parseStudentsPayload(json: unknown): StudentWithScore[] {
   const rows = Array.isArray(json)
     ? json
     : json && typeof json === 'object' && 'students' in json && Array.isArray((json as { students: unknown }).students)
@@ -40,10 +34,8 @@ export default function StudentsList({ courseId }: { courseId?: number | null })
   const queryParam = courseId ? `&course_id=${courseId}` : '';
   const { data: students = [], isLoading, error } = useQuery({
     queryKey: ['students', courseId ?? 'all'],
-    queryFn: async (): Promise<Student[]> => {
-      const response = await fetch(`/api/students?include_scores=true${queryParam}`, {
-        next: { revalidate: 60 },
-      });
+    queryFn: async (): Promise<StudentWithScore[]> => {
+      const response = await fetch(`/api/students?include_scores=true${queryParam}`);
       if (!response.ok) throw new Error('Failed to fetch students');
       const json: unknown = await response.json();
       return parseStudentsPayload(json);

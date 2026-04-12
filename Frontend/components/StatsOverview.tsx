@@ -3,23 +3,14 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-
-interface Stats {
-  totalStudents: number;
-  enrolledStudents: number;
-  averageScore: number;
-  highestScore: number;
-  passingRate: number;
-}
+import type { Stats } from '@/lib/schemas';
 
 export default function StatsOverview({ courseId }: { courseId?: number | null }) {
   const queryParam = courseId ? `?course_id=${courseId}` : '';
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['stats', courseId ?? 'all'],
     queryFn: async () => {
-      const response = await fetch(`/api/stats${queryParam}`, {
-        next: { revalidate: 60 },
-      });
+      const response = await fetch(`/api/stats${queryParam}`);
       if (!response.ok) throw new Error('Failed to fetch stats');
       return response.json() as Promise<Stats>;
     },

@@ -3,11 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-toastify";
-
-interface Course {
-  course_id: number;
-  course_name: string;
-}
+import type { Course } from "@/lib/schemas";
 
 export default function StudentForm() {
   const [firstName, setFirstName] = useState("");
