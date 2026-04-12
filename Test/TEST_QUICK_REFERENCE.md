@@ -42,23 +42,23 @@ pytest test_app.py::TestGradingEndpoints::test_save_grade_success -v
 
 ## Key Test Scenarios
 
-### ✅ Success Cases
+### Success Cases
 - Creating/reading/updating entities
 - Bulk operations
 - Data aggregations
 
-### ✅ Validation
+### Validation
 - Missing required fields
 - Invalid scores (< 0 or > 100)
 - Empty names
 - Boundary values (0, 100)
 
-### ✅ Errors
+### Errors
 - Database connection failures
 - Invalid input handling
 - Empty result sets
 
-### ✅ Data Handling
+### Data Handling
 - Decimal to float conversion
 - Sorting algorithms
 - Special characters in names
