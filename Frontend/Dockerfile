@@ -5,7 +5,7 @@ WORKDIR /app
 
 ENV DB_HOST=db
 ENV DB_USER=root
-ENV DB_PASS=1234
+ENV DB_PASS=coursehub_password_change_me
 ENV DB_NAME=school_db
 # Copy package files
 COPY package.json package-lock.json* ./
@@ -35,10 +35,10 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy only the necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
 USER nextjs
 

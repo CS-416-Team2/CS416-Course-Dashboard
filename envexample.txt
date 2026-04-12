@@ -3,3 +3,4 @@ DB_PORT=3306
 DB_USER=root
 DB_PASS=coursehub_password_change_me
 DB_NAME=school_db
+BACKEND_API_BASE_URL=http://flask-api:5000

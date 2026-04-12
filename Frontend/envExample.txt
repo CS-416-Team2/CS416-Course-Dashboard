@@ -1,12 +1,11 @@
-AUTH_SECRET=replace_with_a_random_64_plus_character_secret
+AUTH_SECRET=replace_with_a_random_64_plus_character_secret_replace_me_1234567890
 AUTH_TRUST_HOST=true
+AUTH_COOKIE_SECURE=false
+AUTH_URL=http://coursehub.local:3000 // benjimbus.com
+BACKEND_API_BASE_URL=http://flask-api:5000
 
-# Next.js server-side DB connection (never expose with NEXT_PUBLIC_)
-DB_HOST=localhost
+DB_HOST=db
 DB_PORT=3306
 DB_USER=root
-DB_PASS=your_mysql_password
+DB_PASS=coursehub_password_change_me
 DB_NAME=school_db
-
-# Flask backend origin used by the protected API proxy route.
-BACKEND_API_BASE_URL=http://127.0.0.1:5000

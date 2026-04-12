@@ -3,6 +3,7 @@ import { z } from "zod";
 const envSchema = z.object({
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 chars"),
   AUTH_TRUST_HOST: z.string().optional(),
+  AUTH_COOKIE_SECURE: z.enum(["true", "false"]).optional(),
   BACKEND_API_BASE_URL: z.string().url().default("http://flask-api:5000"),
   DB_HOST: z.string().min(1),
   DB_PORT: z.coerce.number().int().positive().default(3306),

@@ -3,7 +3,15 @@ import { registrationSchema, createUser } from "@/lib/auth/users";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON payload" },
+        { status: 400 },
+      );
+    }
     const parsed = registrationSchema.safeParse(body);
 
     if (!parsed.success) {

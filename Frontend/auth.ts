@@ -15,6 +15,9 @@ const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
 const DUMMY_BCRYPT_HASH =
   "$2b$12$SbC38gGyGpsiyk/Qy9iLeOiYgdp5PUvz21iyMNoQdIVH8dH../TeW";
 const isProduction = process.env.NODE_ENV === "production";
+const useSecureCookies = env.AUTH_COOKIE_SECURE
+  ? env.AUTH_COOKIE_SECURE === "true"
+  : isProduction;
 
 type AuthorizedUser = {
   id: string;
@@ -150,12 +153,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   cookies: {
     sessionToken: {
-      name: isProduction ? "__Secure-coursehub.session-token" : "coursehub.session-token",
+      name: useSecureCookies ? "__Secure-coursehub.session-token" : "coursehub.session-token",
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: isProduction,
+        secure: useSecureCookies,
       },
     },
   },

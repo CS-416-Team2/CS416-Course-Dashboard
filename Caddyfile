@@ -1,0 +1,7 @@
+{
+  auto_https off
+}
+
+http://coursehub.local:3000 {
+  reverse_proxy nextjs-frontend:3000
+}

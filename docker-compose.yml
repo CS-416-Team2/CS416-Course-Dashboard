@@ -38,13 +38,26 @@ services:
     restart: always
     env_file:
       - ./Frontend/.env
-    ports:
-      - "3000:3000"
     environment:
       BACKEND_API_BASE_URL: ${BACKEND_API_BASE_URL}
     depends_on:
       - db
       - flask-api
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy_proxy
+    restart: always
+    depends_on:
+      - nextjs-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   mysql_data: # This creates a managed volume that survives 'docker-compose down'
+  caddy_data:
+  caddy_config:
